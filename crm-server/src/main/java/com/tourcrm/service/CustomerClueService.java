@@ -1149,9 +1149,22 @@ public class CustomerClueService {
     }
 
     private String createCustomerCode(List<ClueResponse> rows, String employeeCode) {
-        String prefix = employeeCode + LocalDate.now().format(DATE_CODE_FORMAT);
-        long todayCount = rows.stream().filter(item -> item.customerCode().startsWith(prefix)).count();
-        return prefix + String.format("%02d", todayCount + 1);
+        String dateCode = LocalDate.now().format(DATE_CODE_FORMAT);
+        String prefix = employeeCode + dateCode;
+        long todayCount = rows.stream()
+                .filter(item -> itemDate(item).map(LocalDate.now()::equals).orElse(false))
+                .count();
+        int sequence = (int) todayCount + 1;
+        String customerCode = prefix + String.format("%02d", sequence);
+        while (customerCodeExists(rows, customerCode)) {
+            sequence++;
+            customerCode = prefix + String.format("%02d", sequence);
+        }
+        return customerCode;
+    }
+
+    private boolean customerCodeExists(List<ClueResponse> rows, String customerCode) {
+        return rows.stream().anyMatch(item -> item.customerCode().equals(customerCode));
     }
 
     private boolean contains(String value, String keyword) {
