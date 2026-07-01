@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: tour-client-crm
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/tour_client_crm?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 30MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+app:
+  upload-dir: uploads
+  clue-data-file: data/clues.json
+  user-data-file: data/users.json
+  deal-data-file: data/deals.json
+  menu-data-file: data/menus.json
+  jwt-secret: change-this-secret-to-a-long-random-value
+  jwt-expiration-minutes: 1440

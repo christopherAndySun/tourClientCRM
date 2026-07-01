@@ -1,0 +1,14 @@
+crm-web/node_modules/
+crm-web/dist/
+crm-server/target/
+crm-server/data/*.json
+logs/
+tools/
+.agents/
+.git.invalid-*/
+
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db

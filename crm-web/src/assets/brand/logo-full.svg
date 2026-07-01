@@ -1,0 +1,25 @@
+<svg width="680" height="132" viewBox="0 0 680 132" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2" y="2" width="128" height="128" rx="38" fill="url(#markBg)"/>
+  <path d="M35 77C48 57.5 64 48 96 43" stroke="white" stroke-width="8" stroke-linecap="round" stroke-dasharray="1 15"/>
+  <path d="M42 44C42 35.716 48.716 29 57 29C65.284 29 72 35.716 72 44C72 56.4 57 72 57 72C57 72 42 56.4 42 44Z" fill="white"/>
+  <circle cx="57" cy="44" r="6.4" fill="#4B4BFE"/>
+  <path d="M77 85C77 75.611 84.611 68 94 68C103.389 68 111 75.611 111 85C111 99 94 116 94 116C94 116 77 99 77 85Z" fill="white" fill-opacity=".96"/>
+  <circle cx="94" cy="85" r="7" fill="#FE7BA7"/>
+  <path d="M28 97C39 92 49 91.2 59.5 94.8C67.5 97.5 74.6 97.7 82 94.6" stroke="white" stroke-opacity=".7" stroke-width="5" stroke-linecap="round"/>
+
+  <text x="158" y="61" fill="#14122F" font-family="Microsoft YaHei, PingFang SC, sans-serif" font-size="38" font-weight="800" letter-spacing="1">旅游客户 CRM</text>
+  <text x="160" y="96" fill="#777777" font-family="DIN Alternate, Microsoft YaHei, sans-serif" font-size="18" font-weight="700" letter-spacing="5">TOUR CLIENT RELATIONSHIP</text>
+  <path d="M160 112H545" stroke="url(#line)" stroke-width="5" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="markBg" x1="18" y1="10" x2="122" y2="126" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D195C"/>
+      <stop offset=".5" stop-color="#4B4BFE"/>
+      <stop offset="1" stop-color="#FE7BA7"/>
+    </linearGradient>
+    <linearGradient id="line" x1="160" y1="112" x2="545" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4B4BFE"/>
+      <stop offset=".7" stop-color="#71A4D5"/>
+      <stop offset="1" stop-color="#FE7BA7"/>
+    </linearGradient>
+  </defs>
+</svg>
