@@ -127,7 +127,7 @@ async function submit(allowRepeatDemand = false) {
     } else {
       await createClue(payload)
       ElMessage.success(allowRepeatDemand ? '老客户新需求已保存' : '客户线索已提交')
-      router.push('/clues')
+      router.replace(postCreatePath())
     }
   } catch (error) {
     if (!isEdit.value && error?.message?.includes('请不要重复保存')) {
@@ -145,6 +145,13 @@ async function submit(allowRepeatDemand = false) {
 
 function buildPayload(allowRepeatDemand = false) {
   return { ...form, contactInfo: form.contactInfo.trim(), allowRepeatDemand, douyinImages: compactImages(form.douyinImages), wechatImages: compactImages(form.wechatImages) }
+}
+
+function postCreatePath() {
+  const user = JSON.parse(localStorage.getItem('crm_user') || 'null')
+  if (user?.role === 'ADMIN' || user?.menuPermissions?.includes('CLUES')) return '/clues'
+  if (user?.menuPermissions?.includes('ASSIGN')) return '/assign'
+  return '/index'
 }
 
 function openDealDialog() {
