@@ -247,7 +247,49 @@ async function normalizeUploadFile(file, index = 0) {
 function previewImage(file) { preview.name = file.name; preview.url = file.url; preview.visible = true }
 function normalizeSavedImages(images = []) { return images.map((image, index) => ({ name: image.name || `图片${index + 1}`, url: image.url, uid: image.uid || `${Date.now()}-${index}`, sortOrder: Number.isFinite(image.sortOrder) ? image.sortOrder : index })).sort((left, right) => left.sortOrder - right.sortOrder) }
 function compactImages(images = []) { return images.map((image, index) => ({ name: image.name, url: image.url, uid: image.uid, sortOrder: Number.isFinite(image.sortOrder) ? image.sortOrder : index })) }
-function readImageFile(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file) }) }
+function readImageFile(file) {
+  if (!file?.type?.startsWith('image/')) {
+    return readFileAsDataUrl(file)
+  }
+  return compressImageFile(file).catch(() => readFileAsDataUrl(file))
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function compressImageFile(file) {
+  const imageUrl = URL.createObjectURL(file)
+  try {
+    const image = await loadImage(imageUrl)
+    const maxSide = 1280
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+    const width = Math.max(1, Math.round(image.naturalWidth * scale))
+    const height = Math.max(1, Math.round(image.naturalHeight * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext('2d')
+    context.drawImage(image, 0, 0, width, height)
+    return canvas.toDataURL('image/jpeg', 0.78)
+  } finally {
+    URL.revokeObjectURL(imageUrl)
+  }
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = reject
+    image.src = url
+  })
+}
 function normalizeStatus(status) { if (status === 'TO_DEAL') return 'FOLLOWING'; if (status === 'DEALED') return 'DEPOSIT_PAID'; return status || 'NEW' }
 function formatDate(date) { const year = date.getFullYear(); const month = String(date.getMonth() + 1).padStart(2, '0'); const day = String(date.getDate()).padStart(2, '0'); return `${year}-${month}-${day}` }
 function showError(message) { return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' }) }

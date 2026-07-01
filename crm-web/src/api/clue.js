@@ -13,11 +13,11 @@ export function getClueHistory(customerCode) {
 }
 
 export function createClue(data) {
-  return http.post('/clues', data)
+  return http.post('/clues', data, { timeout: 60000 })
 }
 
 export function updateClue(customerCode, data) {
-  return http.put(`/clues/${customerCode}`, data)
+  return http.put(`/clues/${customerCode}`, data, { timeout: 60000 })
 }
 
 export function assignClue(customerCode, data) {
