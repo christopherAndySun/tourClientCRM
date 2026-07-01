@@ -35,6 +35,10 @@ public class SystemSettingsService {
         return read();
     }
 
+    public synchronized SystemSettingsRecord getForSystem() {
+        return read();
+    }
+
     public synchronized SystemSettingsRecord save(SystemSettingsRecord request, String token) {
         authService.requireAdminUser(token);
         SystemSettingsRecord updated = new SystemSettingsRecord(

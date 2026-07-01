@@ -15,7 +15,7 @@
       <el-form-item v-if="isEdit && form.assignedSales" label="分配销售"><el-input :model-value="`${form.assignedSales}（${form.assignedSalesEmployeeCode || '-'}）`" disabled /></el-form-item>
       <el-form-item label="客户联系方式"><el-input v-model="form.contactInfo" placeholder="非必填，客户加微信或提供手机号后再补充" /></el-form-item>
       <el-form-item label="是否有微信号"><el-radio-group v-model="form.hasWechatId"><el-radio-button :value="true">有</el-radio-button><el-radio-button :value="false">无</el-radio-button></el-radio-group></el-form-item>
-      <el-form-item label="抖音截图"><el-upload v-model:file-list="form.douyinImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-remove="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload><div class="upload-tip">后续 OCR 只识别第一张图片，请把包含微信号或手机号的截图放在第一张。</div></el-form-item>
+      <el-form-item label="抖音截图"><el-upload v-model:file-list="form.douyinImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-remove="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload><div class="upload-tip">{{ ocrRecognizing ? '正在识别第一张图片...' : '后续 OCR 只识别第一张图片，请把包含微信号或手机号的截图放在第一张。' }}</div></el-form-item>
       <el-form-item label="微信截图"><el-upload v-model:file-list="form.wechatImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('wechatImages', fileList)" :on-remove="(_, fileList) => syncUploadList('wechatImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload></el-form-item>
       <el-form-item :label="isEdit ? '本次跟进备注' : '备注'"><el-input v-model="form.remark" type="textarea" :rows="4" :placeholder="isEdit ? '填写本次沟通结果，例如：客户要和家人确认，明天下午再回访' : '客户需求、沟通要点等'" /></el-form-item>
       <section v-if="isEdit && historyDemands.length" class="status-history customer-history"><h2>历史需求</h2><div class="history-demand-list"><button v-for="item in historyDemands" :key="item.customerCode" class="history-demand-card" type="button" @click="goHistoryDetail(item)"><div><strong>第 {{ item.demandSequence || 1 }} 次需求 · {{ item.customerCode }}</strong><span>{{ sourcePlatformText(item.sourcePlatform) }} · 运营：{{ item.uploader || '-' }} · 销售：{{ item.assignedSales || '未分配' }}</span></div><StatusTag :status="item.status" /><small>{{ item.createdAt }}</small></button></div></section>
@@ -36,6 +36,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { createClue, getClue, getClueHistory, updateClue } from '../api/clue'
 import { createDeal } from '../api/deal'
+import { recognizeWechatId } from '../api/ocr'
 import StatusTag from '../components/StatusTag.vue'
 import { sourcePlatformText, statusText } from '../utils/status'
 
@@ -43,6 +44,8 @@ const route = useRoute()
 const router = useRouter()
 const submitting = ref(false)
 const dealSubmitting = ref(false)
+const ocrRecognizing = ref(false)
+const lastOcrImageKey = ref('')
 const dealDialogVisible = ref(false)
 const historyLoading = ref(false)
 const historyDemands = ref([])
@@ -170,6 +173,70 @@ async function submitDeal() {
 async function syncUploadList(field, fileList) {
   const normalized = await Promise.all(fileList.map((file, index) => normalizeUploadFile(file, index)))
   form[field] = normalized
+  if (field === 'douyinImages') {
+    await recognizeFirstDouyinImage()
+  }
+}
+
+async function recognizeFirstDouyinImage() {
+  if (!form.hasWechatId || !form.douyinImages.length) return
+  const firstImage = [...form.douyinImages].sort((left, right) => (left.sortOrder || 0) - (right.sortOrder || 0))[0]
+  if (!firstImage?.url?.startsWith('data:image')) return
+  const imageKey = `${firstImage.uid || firstImage.name}-${firstImage.url.length}`
+  if (imageKey === lastOcrImageKey.value) return
+  lastOcrImageKey.value = imageKey
+  ocrRecognizing.value = true
+  try {
+    const res = await recognizeWechatId(firstImage.url)
+    const candidates = res.data?.candidates || []
+    if (candidates.length === 1) {
+      form.contactInfo = candidates[0]
+      ElMessage.success(`已识别并填入微信号：${candidates[0]}`)
+      return
+    }
+    if (candidates.length > 1) {
+      const selected = await selectOcrCandidate(candidates)
+      if (selected) {
+        form.contactInfo = selected
+      }
+      return
+    }
+    ElMessage.warning(res.data?.message || '未识别到微信号或手机号')
+  } catch (error) {
+    ElMessage.warning(error.message || 'OCR 识别失败，请手动填写联系方式')
+  } finally {
+    ocrRecognizing.value = false
+  }
+}
+
+async function selectOcrCandidate(candidates) {
+  const options = candidates.map((item) => `<label class="ocr-candidate"><input type="radio" name="ocrCandidate" value="${escapeHtml(item)}" /> <span>${escapeHtml(item)}</span></label>`).join('')
+  let selectedValue = ''
+  const action = await ElMessageBox.confirm(`<div class="ocr-candidate-list">${options}</div>`, '请选择识别到的微信号', {
+    dangerouslyUseHTMLString: true,
+    confirmButtonText: '填入联系方式',
+    cancelButtonText: '取消',
+    type: 'info',
+    beforeClose: (action, instance, done) => {
+      if (action !== 'confirm') {
+        done()
+        return
+      }
+      const checked = document.querySelector('input[name="ocrCandidate"]:checked')
+      if (!checked) {
+        ElMessage.warning('请先选择一个识别结果')
+        return
+      }
+      selectedValue = checked.value
+      done()
+    }
+  }).catch(() => 'cancel')
+  if (action === 'cancel') return ''
+  return selectedValue
+}
+
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]))
 }
 async function normalizeUploadFile(file, index = 0) {
   const sortOrder = Number.isFinite(file.sortOrder) ? file.sortOrder : index
@@ -231,6 +298,23 @@ function showError(message) { return ElMessageBox.alert(message, '提示', { con
   color: var(--text-muted);
   font-size: 13px;
   line-height: 1.5;
+}
+
+:global(.ocr-candidate-list) {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+:global(.ocr-candidate) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
 }
 
 .preview-dialog-image {
