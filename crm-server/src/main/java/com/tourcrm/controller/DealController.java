@@ -6,6 +6,7 @@ import com.tourcrm.dto.DealCancelRequest;
 import com.tourcrm.dto.DealExportRow;
 import com.tourcrm.dto.DealResponse;
 import com.tourcrm.dto.DealSaveRequest;
+import com.tourcrm.dto.PageResponse;
 import com.tourcrm.service.DealService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -36,7 +37,7 @@ public class DealController {
     }
 
     @GetMapping
-    public ApiResponse<List<DealResponse>> list(
+    public ApiResponse<PageResponse<DealResponse>> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String dealCode,
             @RequestParam(required = false) String customerCode,
@@ -45,9 +46,11 @@ public class DealController {
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String salesEmployeeCode,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(dealService.list(keyword, dealCode, customerCode, customerName, status, startDate, endDate, salesEmployeeCode, token));
+        return ApiResponse.ok(dealService.listPage(keyword, dealCode, customerCode, customerName, status, startDate, endDate, salesEmployeeCode, page, pageSize, token));
     }
 
     @GetMapping("/export")
@@ -68,7 +71,7 @@ public class DealController {
         response.setCharacterEncoding("utf-8");
         response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + fileName);
 
-        List<DealExportRow> rows = dealService.list(keyword, dealCode, customerCode, customerName, status, startDate, endDate, salesEmployeeCode, token).stream()
+        List<DealExportRow> rows = dealService.listForExport(keyword, dealCode, customerCode, customerName, status, startDate, endDate, salesEmployeeCode, token).stream()
                 .map(DealExportRow::new)
                 .toList();
         EasyExcel.write(response.getOutputStream(), DealExportRow.class).sheet("成交记录").doWrite(rows);

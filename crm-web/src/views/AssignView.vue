@@ -41,7 +41,7 @@
         <el-input v-model="filters.keyword" class="filter-field" clearable placeholder="备注等模糊搜索" />
       </template>
       <template #actions>
-        <el-button type="primary" :loading="loading" @click="fetchRows">查询</el-button>
+        <el-button type="primary" :loading="loading" @click="searchRows">查询</el-button>
       </template>
     </FilterPanel>
 
@@ -69,10 +69,15 @@
           </template>
         </el-table-column>
       </el-table>
-      <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" :total="filteredRows.length" />
+      <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" :total="total" />
     </div>
 
-    <div class="mobile-list">
+    <div class="mobile-list" v-loading="loading">
+      <div v-if="loading && !filteredRows.length" class="mobile-loading-panel">
+        <div class="loading-line strong"></div>
+        <div class="loading-line"></div>
+        <div class="loading-line short"></div>
+      </div>
       <article v-for="row in mobileRows" :key="row.customerCode" class="clue-card">
         <div class="card-head">
           <strong>{{ row.customerCode }}</strong>
@@ -87,8 +92,9 @@
           <button class="table-action" type="button" @click="goDetail(row)">详情</button>
         </TextActions>
       </article>
-      <div v-if="filteredRows.length" class="mobile-load-state">
-        <span v-if="mobileRows.length < filteredRows.length">上滑加载更多</span>
+      <div v-if="rows.length" class="mobile-load-state">
+        <span v-if="loadingMore">加载中...</span>
+        <span v-else-if="hasMore">上滑加载更多</span>
         <span v-else>已经到底了</span>
       </div>
       <el-empty v-if="!loading && !filteredRows.length" description="暂无可分配线索" />
@@ -157,11 +163,13 @@ const status = ref('PENDING')
 const dateRange = ref([])
 const poolType = ref('PUBLIC')
 const loading = ref(false)
+const loadingMore = ref(false)
 const saving = ref(false)
 const rows = ref([])
 const users = ref([])
+const total = ref(0)
+const hasMore = ref(false)
 const page = reactive({ current: 1, size: 10 })
-const mobileLoaded = ref(10)
 const mobileFilterVisible = ref(false)
 const assignVisible = ref(false)
 const logVisible = ref(false)
@@ -198,46 +206,72 @@ const dateShortcuts = [
 const canViewMyPool = computed(() => authStore.user?.role === 'ADMIN' || authStore.user?.position === 'SALES')
 const isSales = computed(() => authStore.user?.position === 'SALES')
 const salesUsers = computed(() => users.value.filter((user) => user.position === 'SALES'))
-const mobileRows = computed(() => filteredRows.value.slice(0, mobileLoaded.value))
-const desktopRows = computed(() => {
-  const start = (page.current - 1) * page.size
-  return filteredRows.value.slice(start, start + page.size)
-})
-const filteredRows = computed(() => {
-  if (!status.value || status.value === 'PENDING') {
-    return rows.value.filter((row) => status.value !== 'PENDING' || ['NEW', 'FOLLOWING', 'TO_DEAL'].includes(row.status))
-  }
-  return rows.value.filter((row) => row.status === status.value)
-})
+const mobileRows = computed(() => rows.value)
+const desktopRows = computed(() => rows.value)
+const filteredRows = computed(() => rows.value)
 
-async function fetchRows() {
-  loading.value = true
+async function fetchRows({ append = false } = {}) {
+  const isMobile = window.matchMedia('(max-width: 760px)').matches
+  if (append) {
+    if (loading.value || loadingMore.value || !hasMore.value) return
+    loadingMore.value = true
+  } else {
+    loading.value = true
+    if (isMobile) {
+      page.current = 1
+    }
+  }
   try {
     const poolRequest = poolType.value === 'MINE'
       ? listMySalesPool(filterParams())
       : listPublicSalesPool(filterParams())
     const [clueRes, userRes] = await Promise.all([poolRequest, listSalesCandidates()])
-    rows.value = clueRes.data || []
+    const payload = normalizePage(clueRes.data)
+    rows.value = append ? [...rows.value, ...payload.records] : payload.records
+    total.value = payload.total
+    hasMore.value = payload.hasMore
     users.value = userRes.data || []
-    page.current = 1
-    mobileLoaded.value = 10
   } catch (error) {
     await showError(error.message || '分配数据加载失败')
   } finally {
     loading.value = false
+    loadingMore.value = false
   }
+}
+
+function normalizePage(data) {
+  if (Array.isArray(data)) {
+    return { records: data, total: data.length, hasMore: false }
+  }
+  return {
+    records: data?.records || [],
+    total: data?.total || 0,
+    hasMore: Boolean(data?.hasMore)
+  }
+}
+
+function searchRows() {
+  if (page.current === 1) {
+    fetchRows()
+    return
+  }
+  page.current = 1
 }
 
 function filterParams() {
   return {
     ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '')),
+    status: status.value,
     startDate: dateRange.value?.[0],
-    endDate: dateRange.value?.[1]
+    endDate: dateRange.value?.[1],
+    page: page.current,
+    pageSize: page.size
   }
 }
 
 function switchPool(type) {
   poolType.value = type
+  page.current = 1
   fetchRows()
 }
 
@@ -346,15 +380,23 @@ function toggleMobileFilter() {
 }
 
 watch(() => page.size, () => {
+  const wasFirstPage = page.current === 1
   page.current = 1
+  if (wasFirstPage) fetchRows()
+})
+
+watch(() => page.current, (current, previous) => {
+  if (window.matchMedia('(max-width: 760px)').matches) return
+  if (current !== previous) fetchRows()
 })
 
 function handleMobileScroll() {
   if (!window.matchMedia('(max-width: 760px)').matches) return
-  if (mobileLoaded.value >= filteredRows.value.length || loading.value) return
+  if (!hasMore.value || loading.value || loadingMore.value) return
   const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 180
   if (nearBottom) {
-    mobileLoaded.value = Math.min(mobileLoaded.value + 10, filteredRows.value.length)
+    page.current += 1
+    fetchRows({ append: true })
   }
 }
 </script>
@@ -462,6 +504,41 @@ function handleMobileScroll() {
     color: var(--text-muted);
     text-align: center;
     font-size: 13px;
+  }
+
+  .mobile-loading-panel {
+    display: grid;
+    gap: 10px;
+    padding: 18px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .loading-line {
+    height: 14px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(178, 174, 250, 0.22), rgba(255, 255, 255, 0.78), rgba(178, 174, 250, 0.22));
+    background-size: 220% 100%;
+    animation: loading-shimmer 1.2s linear infinite;
+  }
+
+  .loading-line.strong {
+    width: 72%;
+    height: 18px;
+  }
+
+  .loading-line.short {
+    width: 46%;
+  }
+
+  @keyframes loading-shimmer {
+    from {
+      background-position: 120% 0;
+    }
+    to {
+      background-position: -120% 0;
+    }
   }
 
 }

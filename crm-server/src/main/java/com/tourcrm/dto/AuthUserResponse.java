@@ -9,6 +9,7 @@ public record AuthUserResponse(
         String role,
         String position,
         String leaderEmployeeCode,
-        List<String> menuPermissions
+        List<String> menuPermissions,
+        String expiresAt
 ) {
 }

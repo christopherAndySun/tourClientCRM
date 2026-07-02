@@ -36,56 +36,32 @@
       <section v-if="showOperationAttribution" class="panel">
         <h2>运营归属</h2>
         <div v-if="operationTree.length" class="tree-list">
-          <div v-for="item in operationTree" :key="item.employeeCode" class="tree-node">
-            <button class="tree-row" type="button" @click="openEmployeeTreeDetail(item, 'UPLOADER')">
-              <span>
-                <strong>{{ item.employeeName }}</strong>
-                <small>{{ item.employeeCode }} · {{ roleText(item.role) }}</small>
-              </span>
-              <em>{{ item.teamTotalCount }}</em>
-            </button>
-            <div v-if="item.children?.length" class="tree-children">
-              <button v-for="child in item.children" :key="child.employeeCode" class="tree-row child" type="button" @click="openEmployeeTreeDetail(child, 'UPLOADER')">
-                <span>
-                  <strong>{{ child.employeeName }}</strong>
-                  <small>{{ child.employeeCode }} · {{ roleText(child.role) }}</small>
-                </span>
-                <em>{{ child.teamTotalCount }}</em>
-              </button>
-            </div>
-          </div>
+          <TreeNode
+            v-for="item in operationTree"
+            :key="item.employeeCode"
+            :item="item"
+            @open="openEmployeeTreeDetail($event, 'UPLOADER')"
+          />
         </div>
-        <el-empty v-else description="暂无数据" />
+        <el-empty v-else description="暂无运营数据" />
       </section>
 
       <section v-if="showSalesAttribution" class="panel">
         <h2>销售归属</h2>
         <div v-if="salesTree.length" class="tree-list">
-          <div v-for="item in salesTree" :key="item.employeeCode" class="tree-node">
-            <button class="tree-row" type="button" @click="openEmployeeTreeDetail(item, 'SALES')">
-              <span>
-                <strong>{{ item.employeeName }}</strong>
-                <small>{{ item.employeeCode }} · {{ roleText(item.role) }}</small>
-              </span>
-              <em>{{ item.teamTotalCount }}</em>
-            </button>
-            <div v-if="item.children?.length" class="tree-children">
-              <button v-for="child in item.children" :key="child.employeeCode" class="tree-row child" type="button" @click="openEmployeeTreeDetail(child, 'SALES')">
-                <span>
-                  <strong>{{ child.employeeName }}</strong>
-                  <small>{{ child.employeeCode }} · {{ roleText(child.role) }}</small>
-                </span>
-                <em>{{ child.teamTotalCount }}</em>
-              </button>
-            </div>
-          </div>
+          <TreeNode
+            v-for="item in salesTree"
+            :key="item.employeeCode"
+            :item="item"
+            @open="openEmployeeTreeDetail($event, 'SALES')"
+          />
         </div>
         <el-empty v-else description="暂无销售数据" />
       </section>
     </div>
 
-    <el-dialog v-model="detailVisible" :title="detailTitle" width="min(860px, 94vw)">
-      <el-table :data="pagedDetailRows" v-loading="detailLoading" row-key="customerCode" @row-click="goDetail">
+    <el-dialog v-model="detailVisible" :title="detailTitle" width="min(900px, 94vw)">
+      <el-table :data="detailRows" v-loading="detailLoading" row-key="customerCode" @row-click="goDetail">
         <el-table-column prop="customerCode" label="客户编号" min-width="130" />
         <el-table-column label="联系方式" min-width="160">
           <template #default="{ row }">{{ row.contactInfo || '待补充' }}</template>
@@ -101,14 +77,25 @@
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" min-width="150" />
       </el-table>
-      <AppPagination v-model:current-page="detailPage.current" v-model:page-size="detailPage.size" :total="detailRows.length" />
+      <div class="mobile-list detail-mobile-list" v-loading="detailLoading">
+        <article v-for="row in detailRows" :key="row.customerCode" class="detail-card" @click="goDetail(row)">
+          <div class="detail-card-head">
+            <strong>{{ row.customerCode }}</strong>
+            <StatusTag :status="row.status" />
+          </div>
+          <span>{{ row.contactInfo || '联系方式待补充' }}</span>
+          <small>运营：{{ row.uploader || '-' }} · 销售：{{ row.assignedSales || '未分配' }}</small>
+          <small>{{ row.createdAt || '-' }}</small>
+        </article>
+      </div>
+      <AppPagination v-model:current-page="detailPage.current" v-model:page-size="detailPage.size" :total="detailTotal" />
       <div class="detail-tip">点击任意一行可进入客户详情。</div>
     </el-dialog>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { getClueStats, getPerformance, getStatsDetail } from '../api/clue'
@@ -116,7 +103,28 @@ import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
-import { statusText } from '../utils/status'
+import { getStoredUser } from '../utils/session'
+
+const TreeNode = defineComponent({
+  name: 'TreeNode',
+  props: {
+    item: { type: Object, required: true }
+  },
+  emits: ['open'],
+  setup(props, { emit }) {
+    const renderNode = (item, child = false) => h('div', { class: 'tree-node' }, [
+      h('button', { class: ['tree-row', child ? 'child' : ''], type: 'button', onClick: () => emit('open', item) }, [
+        h('span', [
+          h('strong', item.employeeName),
+          h('small', `${item.employeeCode} · ${roleText(item.role)}`)
+        ]),
+        h('em', item.teamTotalCount)
+      ]),
+      item.children?.length ? h('div', { class: 'tree-children' }, item.children.map((node) => renderNode(node, true))) : null
+    ])
+    return () => renderNode(props.item)
+  }
+})
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -126,6 +134,8 @@ const detailLoading = ref(false)
 const detailVisible = ref(false)
 const detailTitle = ref('统计明细')
 const detailRows = ref([])
+const detailTotal = ref(0)
+const detailQuery = ref(null)
 const detailPage = reactive({ current: 1, size: 10 })
 const performanceRows = ref([])
 const dateRange = ref(defaultMonthRange())
@@ -138,7 +148,7 @@ const stats = reactive({
   uploaderCounts: {},
   salesCounts: {}
 })
-const currentUser = computed(() => authStore.user || JSON.parse(localStorage.getItem('crm_user') || 'null'))
+const currentUser = computed(() => authStore.user || getStoredUser())
 const showOperationAttribution = computed(() => currentUser.value?.role === 'ADMIN' || currentUser.value?.position === 'OPERATION')
 const showSalesAttribution = computed(() => currentUser.value?.role === 'ADMIN' || currentUser.value?.position === 'SALES')
 const visibleAttributionSections = computed(() => [
@@ -147,13 +157,7 @@ const visibleAttributionSections = computed(() => [
 ].filter(Boolean))
 
 const dateShortcuts = [
-  {
-    text: '今天',
-    value: () => {
-      const date = new Date()
-      return [date, date]
-    }
-  },
+  { text: '今天', value: () => { const date = new Date(); return [date, date] } },
   {
     text: '本周',
     value: () => {
@@ -164,39 +168,24 @@ const dateShortcuts = [
       return [start, now]
     }
   },
-  {
-    text: '本月',
-    value: () => {
-      const now = new Date()
-      return [new Date(now.getFullYear(), now.getMonth(), 1), now]
-    }
-  }
+  { text: '本月', value: () => { const now = new Date(); return [new Date(now.getFullYear(), now.getMonth(), 1), now] } }
 ]
 
 const metricCards = computed(() => [
   { key: 'total', label: '总客资', value: stats.totalCount || 0, className: 'stat-primary', onClick: () => openDetail('ALL', '', '筛选范围总客资') },
   { key: 'today', label: '今日新增', value: stats.todayCount || 0, onClick: openTodayDetail },
-  { key: 'repeat', label: '老客新需求', value: stats.repeatDemandCount || 0, onClick: openRepeatDetail },
+  { key: 'repeat', label: '老客新需求', value: stats.repeatDemandCount || 0, onClick: () => openDetail('REPEAT', '1', '老客新需求') },
   { key: 'new', label: '新录入', value: statusCount('NEW'), onClick: () => openDetail('STATUS', 'NEW', '新录入') },
   { key: 'following', label: '跟进中', value: statusCount('FOLLOWING'), onClick: () => openDetail('STATUS', 'FOLLOWING', '跟进中') },
   { key: 'invalid', label: '无效用户', value: statusCount('INVALID'), className: 'stat-danger', onClick: () => openDetail('STATUS', 'INVALID', '无效用户') },
-  { key: 'deposit', label: '已交定金', value: depositCount.value, className: 'stat-pink', onClick: openDepositDetail },
+  { key: 'deposit', label: '已交定金', value: statusCount('DEPOSIT_PAID'), className: 'stat-pink', onClick: () => openDetail('STATUS', 'DEPOSIT_PAID', '已交定金') },
   { key: 'refunded', label: '退单', value: statusCount('REFUNDED'), className: 'stat-danger', onClick: () => openDetail('STATUS', 'REFUNDED', '退单') },
-  { key: 'landed', label: '已落地', value: landedCount.value, className: 'stat-green', onClick: openLandedDetail }
+  { key: 'landed', label: '已落地', value: statusCount('LANDED'), className: 'stat-green', onClick: () => openDetail('STATUS', 'LANDED', '已落地') }
 ])
-const depositCount = computed(() => {
-  return stats.statusCounts?.DEPOSIT_PAID || 0
-})
-const landedCount = computed(() => {
-  return stats.statusCounts?.LANDED || 0
-})
+
 const businessPerformanceRows = computed(() => performanceRows.value.filter((item) => item.role !== 'ADMIN'))
 const operationTree = computed(() => showOperationAttribution.value ? buildEmployeeTree(businessPerformanceRows.value.filter((item) => item.position === 'OPERATION')) : [])
 const salesTree = computed(() => showSalesAttribution.value ? buildEmployeeTree(businessPerformanceRows.value.filter((item) => item.position === 'SALES')) : [])
-const pagedDetailRows = computed(() => {
-  const start = (detailPage.current - 1) * detailPage.size
-  return detailRows.value.slice(start, start + detailPage.size)
-})
 
 async function fetchStats() {
   loading.value = true
@@ -222,19 +211,24 @@ async function fetchStats() {
 }
 
 async function openDetail(type, value, title, overrideDates = null) {
+  detailQuery.value = { type, value, title, overrideDates }
   detailTitle.value = `${title}明细`
   detailVisible.value = true
   detailLoading.value = true
-  detailPage.current = 1
   try {
     const res = await getStatsDetail({
       ...currentDateParams(overrideDates),
       type,
-      value
+      value,
+      page: detailPage.current,
+      pageSize: detailPage.size
     })
-    detailRows.value = res.data || []
+    const data = res.data || {}
+    detailRows.value = data.records || []
+    detailTotal.value = Number(data.total || 0)
   } catch (error) {
     detailRows.value = []
+    detailTotal.value = 0
     await ElMessageBox.alert(error.message || '统计明细加载失败', '提示', {
       confirmButtonText: '我知道了',
       type: 'warning'
@@ -248,47 +242,10 @@ function openTodayDetail() {
   openDetail('ALL', '', '今日新增', [today, today])
 }
 
-async function openRepeatDetail() {
-  await openDetail('ALL', '', '老客新需求')
-  detailRows.value = detailRows.value.filter((row) => row.repeatDemand)
-}
-
-async function openDepositDetail() {
-  await openDetail('ALL', '', '已交定金')
-  detailRows.value = detailRows.value.filter((row) => ['DEPOSIT_PAID', 'DEALED'].includes(row.status))
-}
-
-async function openLandedDetail() {
-  await openDetail('STATUS', 'LANDED', '已落地')
-}
-
-async function openEmployeeTreeDetail(row, type) {
-  const codes = collectEmployeeCodes(row)
+function openEmployeeTreeDetail(row, type) {
   const titlePrefix = type === 'SALES' ? '销售' : '运营'
-  detailTitle.value = `${titlePrefix}：${row.employeeName}明细`
-  detailVisible.value = true
-  detailLoading.value = true
   detailPage.current = 1
-  try {
-    const res = await getStatsDetail({
-      ...currentDateParams(),
-      type: 'ALL',
-      value: ''
-    })
-    const rows = res.data || []
-    detailRows.value = rows.filter((item) => {
-      const employeeCode = type === 'SALES' ? item.assignedSalesEmployeeCode : item.uploaderEmployeeCode
-      return codes.includes(employeeCode)
-    })
-  } catch (error) {
-    detailRows.value = []
-    await ElMessageBox.alert(error.message || '统计明细加载失败', '提示', {
-      confirmButtonText: '我知道了',
-      type: 'warning'
-    })
-  } finally {
-    detailLoading.value = false
-  }
+  openDetail(type, row.employeeCode, `${titlePrefix}：${row.employeeName}`)
 }
 
 function goDetail(row) {
@@ -330,10 +287,6 @@ function buildEmployeeTree(sourceRows) {
   return finalize(roots)
 }
 
-function collectEmployeeCodes(row) {
-  return [row.employeeCode, ...(row.children || []).flatMap(collectEmployeeCodes)]
-}
-
 function treeSortWeight(row) {
   if (row.role === 'ADMIN') return 0
   if (row.role === 'LEADER') return 1
@@ -360,8 +313,10 @@ function defaultMonthRange() {
   return [formatDate(new Date(now.getFullYear(), now.getMonth(), 1)), formatDate(now)]
 }
 
-watch(() => detailPage.size, () => {
-  detailPage.current = 1
+watch([() => detailPage.current, () => detailPage.size], () => {
+  if (!detailQuery.value || !detailVisible.value) return
+  const { type, value, title, overrideDates } = detailQuery.value
+  openDetail(type, value, title, overrideDates)
 })
 
 onMounted(fetchStats)
@@ -437,8 +392,8 @@ onMounted(fetchStats)
 .stat-card span {
   display: block;
   color: inherit;
-  opacity: 0.78;
   margin-bottom: 10px;
+  opacity: 0.78;
 }
 
 .stat-card strong {
@@ -459,55 +414,23 @@ onMounted(fetchStats)
   grid-template-columns: minmax(0, 1fr);
 }
 
-.stats-wide {
-  grid-column: 1 / -1;
-}
-
 h2 {
   margin: 0 0 14px;
-  font-size: 18px;
   color: var(--text-strong);
+  font-size: 18px;
 }
 
-.rank-list,
 .tree-list {
   display: grid;
   gap: 10px;
 }
 
-.rank-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  min-height: 46px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 14px;
-  background: rgba(178, 174, 250, 0.12);
-  color: var(--text-main);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.rank-row:hover {
-  background: rgba(75, 75, 254, 0.12);
-}
-
-.rank-row strong {
-  color: var(--brand);
-  font-family: "DIN Alternate", sans-serif;
-  font-size: 20px;
-}
-
-.tree-node {
+:deep(.tree-node) {
   display: grid;
   gap: 8px;
 }
 
-.tree-row {
+:deep(.tree-row) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -519,26 +442,26 @@ h2 {
   border-radius: 14px;
   background: rgba(178, 174, 250, 0.12);
   color: var(--text-main);
+  cursor: pointer;
   font: inherit;
   text-align: left;
-  cursor: pointer;
 }
 
-.tree-row:hover {
+:deep(.tree-row:hover) {
   background: rgba(75, 75, 254, 0.12);
 }
 
-.tree-row span {
+:deep(.tree-row span) {
   display: grid;
   gap: 2px;
 }
 
-.tree-row small {
+:deep(.tree-row small) {
   color: var(--text-muted);
   font-size: 12px;
 }
 
-.tree-row em {
+:deep(.tree-row em) {
   min-width: 42px;
   color: var(--brand);
   font-family: "DIN Alternate", sans-serif;
@@ -548,16 +471,37 @@ h2 {
   text-align: right;
 }
 
-.tree-children {
+:deep(.tree-children) {
   display: grid;
   gap: 8px;
   padding-left: 18px;
   border-left: 2px solid rgba(178, 174, 250, 0.36);
 }
 
-.tree-row.child {
+:deep(.tree-row.child) {
   min-height: 44px;
   background: rgba(255, 255, 255, 0.66);
+}
+
+.detail-mobile-list {
+  margin-top: 10px;
+}
+
+.detail-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.detail-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.detail-card small {
+  color: var(--text-muted);
 }
 
 .detail-tip {
@@ -580,10 +524,6 @@ h2 {
   .stats-columns,
   .stats-grid {
     grid-template-columns: 1fr;
-  }
-
-  .date-range {
-    width: 100%;
   }
 
   .stat-card {

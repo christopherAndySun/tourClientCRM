@@ -16,8 +16,8 @@ export function updateCurrentUser(data) {
   return http.put('/auth/me', data)
 }
 
-export function listUsers() {
-  return http.get('/auth/users')
+export function listUsers(params = {}) {
+  return http.get('/auth/users', { params })
 }
 
 export function listLeaders() {

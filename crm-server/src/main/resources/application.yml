@@ -6,26 +6,25 @@ spring:
     name: tour-client-crm
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/tour_client_crm?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3306/tour_client_crm?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci&serverTimezone=Asia/Shanghai
     username: root
     password: root
   servlet:
     multipart:
       max-file-size: 10MB
       max-request-size: 30MB
-
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
-  global-config:
-    db-config:
-      id-type: auto
+  web:
+    resources:
+      add-mappings: true
+  http:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 app:
   upload-dir: uploads
-  clue-data-file: data/clues.json
-  user-data-file: data/users.json
-  deal-data-file: data/deals.json
-  menu-data-file: data/menus.json
   jwt-secret: change-this-secret-to-a-long-random-value
   jwt-expiration-minutes: 1440
+  auth:
+    single-login: false

@@ -7,7 +7,7 @@
 
     <el-alert
       class="settings-tip"
-      title="这里维护系统级配置。OCR 接入前先保存 APP CODE 和 APP SECRET，后续新增配置也会统一放在这里。"
+      title="这里维护系统级配置。OCR 接入前先保存 APP CODE 和 APP SECRET，后续新增配置也统一放在这里。"
       type="info"
       :closable="false"
       show-icon
@@ -68,10 +68,14 @@ async function fetchSettings() {
   loadError.value = ''
   try {
     const res = await getSystemSettings()
-    Object.assign(form, res.data || {})
+    Object.assign(form, {
+      ocrAppCode: res.data?.ocrAppCode || '',
+      ocrAppSecret: res.data?.ocrAppSecret || '',
+      remark: res.data?.remark || '',
+      updatedAt: res.data?.updatedAt || ''
+    })
   } catch (error) {
     loadError.value = error.message || '系统设置加载失败'
-    await showError(error.message || '系统设置加载失败')
   } finally {
     loading.value = false
   }
@@ -84,7 +88,11 @@ async function submit() {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    saving.value = true
+  } catch {
+    return
+  }
+  saving.value = true
+  try {
     const res = await saveSystemSettings({
       ocrAppCode: form.ocrAppCode,
       ocrAppSecret: form.ocrAppSecret,
@@ -93,16 +101,13 @@ async function submit() {
     Object.assign(form, res.data || {})
     ElMessage.success('系统设置已保存')
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close') {
-      await showError(error.message || '系统设置保存失败')
-    }
+    await showError(error.message || '系统设置保存失败')
   } finally {
     saving.value = false
   }
 }
 
 function showError(message) {
-  return ElMessage.warning(message)
   return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' })
 }
 
@@ -115,11 +120,12 @@ onMounted(fetchSettings)
 }
 
 .settings-card {
-  max-width: 820px;
+  display: grid;
+  gap: 18px;
 }
 
 .load-error {
-  margin-bottom: 14px;
+  margin-bottom: 2px;
 }
 
 .section-head {
@@ -127,28 +133,28 @@ onMounted(fetchSettings)
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
 }
 
 .section-head h2 {
-  margin: 0 0 6px;
-  color: var(--text-strong);
-}
-
-.section-head p,
-.updated-at {
   margin: 0;
-  color: var(--text-muted);
+  color: #17233c;
+  font-size: 20px;
+}
+
+.section-head p {
+  margin: 8px 0 0;
+  color: #68758c;
+  line-height: 1.6;
 }
 
 .updated-at {
-  padding-top: 6px;
+  color: #68758c;
   font-size: 13px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .section-head {
-    display: grid;
+    flex-direction: column;
   }
 }
 </style>

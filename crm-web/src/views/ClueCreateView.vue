@@ -38,6 +38,7 @@ import { createClue, getClue, getClueHistory, updateClue } from '../api/clue'
 import { createDeal } from '../api/deal'
 import { recognizeWechatId } from '../api/ocr'
 import StatusTag from '../components/StatusTag.vue'
+import { getStoredUser } from '../utils/session'
 import { sourcePlatformText, statusText } from '../utils/status'
 
 const route = useRoute()
@@ -105,6 +106,8 @@ function goHistoryDetail(item) {
 
 async function submit(allowRepeatDemand = false) {
   submitting.value = true
+  const hasImages = form.douyinImages.length || form.wechatImages.length
+  if (hasImages) ElMessage.info('正在上传图片并保存客户线索，请不要关闭页面...')
   try {
     const payload = buildPayload(allowRepeatDemand)
     if (isEdit.value) {
@@ -137,7 +140,7 @@ async function submit(allowRepeatDemand = false) {
       if (action !== 'cancel') await submit(true)
       return
     }
-    await showError(error.message || '保存失败，请稍后重试')
+    await showError(error.message || '保存失败，请检查网络后重试')
   } finally {
     submitting.value = false
   }
@@ -148,7 +151,7 @@ function buildPayload(allowRepeatDemand = false) {
 }
 
 function postCreatePath() {
-  const user = JSON.parse(localStorage.getItem('crm_user') || 'null')
+  const user = getStoredUser()
   if (user?.role === 'ADMIN' || user?.menuPermissions?.includes('CLUES')) return '/clues'
   if (user?.menuPermissions?.includes('ASSIGN')) return '/assign'
   return '/index'
@@ -193,6 +196,7 @@ async function recognizeFirstDouyinImage() {
   if (imageKey === lastOcrImageKey.value) return
   lastOcrImageKey.value = imageKey
   ocrRecognizing.value = true
+  ElMessage.info('正在识别第一张抖音截图...')
   try {
     const res = await recognizeWechatId(firstImage.url)
     const candidates = res.data?.candidates || []
@@ -208,9 +212,12 @@ async function recognizeFirstDouyinImage() {
       }
       return
     }
-    ElMessage.warning(res.data?.message || '未识别到微信号或手机号')
+    ElMessage.warning(res.data?.message || '未识别到微信号或手机号，请手动填写联系方式')
   } catch (error) {
-    ElMessage.warning(error.message || 'OCR 识别失败，请手动填写联系方式')
+    ElMessageBox.alert(error.message || 'OCR 识别失败，可以稍后重试或手动填写联系方式', 'OCR 识别失败', {
+      confirmButtonText: '我知道了',
+      type: 'warning'
+    })
   } finally {
     ocrRecognizing.value = false
   }

@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { getCurrentUser, login, updateCurrentUser } from '../api/auth'
+import { clearSession, getStoredUser, getToken, setSessionStorage, updateStoredUser } from '../utils/session'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    token: localStorage.getItem('crm_token') || '',
-    user: JSON.parse(localStorage.getItem('crm_user') || 'null')
+    token: getToken(),
+    user: getStoredUser()
   }),
   actions: {
     async loginWithPassword(form) {
@@ -14,12 +15,12 @@ export const useAuthStore = defineStore('auth', {
     async fetchCurrentUser() {
       const res = assertSuccess(await getCurrentUser())
       this.user = res.data
-      localStorage.setItem('crm_user', JSON.stringify(res.data))
+      updateStoredUser(res.data)
     },
     async updateProfile(form) {
       const res = assertSuccess(await updateCurrentUser(form))
       this.user = res.data
-      localStorage.setItem('crm_user', JSON.stringify(res.data))
+      updateStoredUser(res.data)
     },
     setSession(data) {
       this.token = data.token
@@ -31,14 +32,12 @@ export const useAuthStore = defineStore('auth', {
         leaderEmployeeCode: data.leaderEmployeeCode,
         menuPermissions: data.menuPermissions || []
       }
-      localStorage.setItem('crm_token', this.token)
-      localStorage.setItem('crm_user', JSON.stringify(this.user))
+      setSessionStorage(this.token, this.user, data.expiresAt)
     },
     logout() {
       this.token = ''
       this.user = null
-      localStorage.removeItem('crm_token')
-      localStorage.removeItem('crm_user')
+      clearSession()
     }
   }
 })

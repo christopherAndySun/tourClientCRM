@@ -7,14 +7,14 @@
 
     <el-alert
       class="manage-tip"
-      title="账号基础信息和菜单权限分开维护。新增账号会按岗位自动带默认菜单，后续可在列表中单独配置。"
+      title="账号基础信息和菜单权限分开维护。新增账号会按岗位默认勾选菜单，后续可在列表中单独配置。"
       type="info"
       :closable="false"
       show-icon
     />
 
     <div class="panel desktop-table">
-      <el-table :data="pagedUsers" width="100%" v-loading="loading">
+      <el-table :data="users" width="100%" v-loading="loading">
         <el-table-column prop="name" label="姓名" min-width="120" />
         <el-table-column prop="employeeCode" label="员工编号" min-width="120" />
         <el-table-column label="角色" min-width="110">
@@ -37,11 +37,11 @@
           </template>
         </el-table-column>
       </el-table>
-      <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" :total="users.length" />
+      <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" :total="total" />
     </div>
 
-    <div class="mobile-list">
-      <article v-for="user in pagedUsers" :key="user.employeeCode" class="user-card">
+    <div class="mobile-list" v-loading="loading">
+      <article v-for="user in users" :key="user.employeeCode" class="user-card">
         <div>
           <strong>{{ user.name }}</strong>
           <span>{{ user.employeeCode }}</span>
@@ -53,7 +53,8 @@
           <button class="table-action danger" type="button" :disabled="user.role === 'ADMIN'" @click="removeUser(user)">删除</button>
         </TextActions>
       </article>
-      <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" compact :total="users.length" />
+      <el-empty v-if="!loading && users.length === 0" description="暂无账号" />
+      <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" compact :total="total" />
     </div>
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑员工账号' : '新增员工账号'" width="min(560px, 92vw)" destroy-on-close>
@@ -169,6 +170,7 @@ const DEFAULT_MENUS = {
 
 const users = ref([])
 const leaders = ref([])
+const total = ref(0)
 const loading = ref(false)
 const saving = ref(false)
 const savingPermission = ref(false)
@@ -194,10 +196,6 @@ const permissionForm = reactive({
 })
 
 const leaderOptions = computed(() => leaders.value.filter((leader) => leader.employeeCode !== form.employeeCode))
-const pagedUsers = computed(() => {
-  const start = (page.current - 1) * page.size
-  return users.value.slice(start, start + page.size)
-})
 
 const rules = computed(() => ({
   name: [{ required: true, message: '请填写姓名', trigger: 'blur' }],
@@ -218,10 +216,14 @@ const rules = computed(() => ({
 async function fetchUsers() {
   loading.value = true
   try {
-    const [userRes, leaderRes] = await Promise.all([listUsers(), listLeaders()])
-    users.value = userRes.data || []
+    const [userRes, leaderRes] = await Promise.all([
+      listUsers({ page: page.current, pageSize: page.size }),
+      listLeaders()
+    ])
+    const pageData = userRes.data || {}
+    users.value = pageData.records || []
+    total.value = Number(pageData.total || 0)
     leaders.value = leaderRes.data || []
-    page.current = 1
     await fetchMenus()
   } catch (error) {
     await showError(error.message || '账号列表加载失败')
@@ -408,9 +410,7 @@ function positionText(position) {
   }[position] || position
 }
 
-watch(() => page.size, () => {
-  page.current = 1
-})
+watch([() => page.current, () => page.size], fetchUsers)
 
 onMounted(fetchUsers)
 </script>
@@ -484,9 +484,9 @@ onMounted(fetchUsers)
 }
 
 .permission-menu-item :deep(.el-checkbox) {
+  align-items: flex-start;
   height: auto;
   margin-right: 0;
-  align-items: flex-start;
 }
 
 .permission-menu-item :deep(.el-checkbox__label) {

@@ -1,45 +1,38 @@
 package com.tourcrm.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tourcrm.dto.SystemSettingsRecord;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 
 @Service
 public class SystemSettingsService {
 
     private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    private final ObjectMapper objectMapper;
     private final AuthService authService;
-    private final Path dataFile;
+    private final SystemSettingsRepository systemSettingsRepository;
 
     public SystemSettingsService(
-            ObjectMapper objectMapper,
             AuthService authService,
-            @Value("${app.system-settings-file:data/system-settings.json}") String dataFile
+            SystemSettingsRepository systemSettingsRepository
     ) {
-        this.objectMapper = objectMapper;
         this.authService = authService;
-        this.dataFile = Path.of(dataFile);
+        this.systemSettingsRepository = systemSettingsRepository;
     }
 
-    public synchronized SystemSettingsRecord get(String token) {
+    public SystemSettingsRecord get(String token) {
         authService.requireAdminUser(token);
         return read();
     }
 
-    public synchronized SystemSettingsRecord getForSystem() {
+    public SystemSettingsRecord getForSystem() {
         return read();
     }
 
-    public synchronized SystemSettingsRecord save(SystemSettingsRecord request, String token) {
+    public SystemSettingsRecord save(SystemSettingsRecord request, String token) {
         authService.requireAdminUser(token);
         SystemSettingsRecord updated = new SystemSettingsRecord(
                 clean(request.ocrAppCode()),
@@ -52,32 +45,21 @@ public class SystemSettingsService {
     }
 
     private SystemSettingsRecord read() {
-        if (!Files.exists(dataFile)) {
+        Optional<SystemSettingsRecord> databaseSettings = systemSettingsRepository.readSystemSettings();
+        if (databaseSettings.isEmpty()) {
             return emptySettings();
         }
-        try {
-            SystemSettingsRecord settings = objectMapper.readValue(dataFile.toFile(), SystemSettingsRecord.class);
-            return new SystemSettingsRecord(
-                    clean(settings.ocrAppCode()),
-                    clean(settings.ocrAppSecret()),
-                    clean(settings.remark()),
-                    clean(settings.updatedAt())
-            );
-        } catch (IOException error) {
-            throw new IllegalStateException("读取系统设置失败", error);
-        }
+        SystemSettingsRecord settings = databaseSettings.get();
+        return new SystemSettingsRecord(
+                clean(settings.ocrAppCode()),
+                clean(settings.ocrAppSecret()),
+                clean(settings.remark()),
+                clean(settings.updatedAt())
+        );
     }
 
     private void write(SystemSettingsRecord settings) {
-        try {
-            Path parent = dataFile.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(dataFile.toFile(), settings);
-        } catch (IOException error) {
-            throw new IllegalStateException("保存系统设置失败", error);
-        }
+        systemSettingsRepository.writeSystemSettings(settings);
     }
 
     private SystemSettingsRecord emptySettings() {

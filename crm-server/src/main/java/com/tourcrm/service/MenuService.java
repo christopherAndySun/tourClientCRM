@@ -1,16 +1,9 @@
 package com.tourcrm.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tourcrm.common.BusinessException;
 import com.tourcrm.dto.MenuItemRecord;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -20,9 +13,6 @@ import java.util.stream.Collectors;
 
 @Service
 public class MenuService {
-
-    private static final TypeReference<List<MenuItemRecord>> MENU_LIST_TYPE = new TypeReference<>() {
-    };
 
     private static final List<MenuItemRecord> DEFAULT_MENUS = List.of(
             new MenuItemRecord(AuthService.MENU_CLUES, "BUSINESS", "业务", "客户列表", "个人客户线索工作区", "/clues", 10, true),
@@ -38,31 +28,27 @@ public class MenuService {
             new MenuItemRecord(AuthService.MENU_MENUS, "MANAGE", "管理", "菜单管理", "维护菜单名称、排序和启停", "/menus", 50, true),
             new MenuItemRecord(AuthService.MENU_SETTINGS, "MANAGE", "管理", "系统设置", "维护 OCR 等系统级配置", "/settings", 60, true)
     );
-    private final ObjectMapper objectMapper;
-    private final Path dataFile;
-    private final AuthService authService;
 
-    public MenuService(
-            ObjectMapper objectMapper,
-            AuthService authService,
-            @Value("${app.menu-data-file:data/menus.json}") String dataFile
-    ) {
-        this.objectMapper = objectMapper;
+    private final AuthService authService;
+    private final MenuRepository menuRepository;
+
+    public MenuService(AuthService authService, MenuRepository menuRepository) {
         this.authService = authService;
-        this.dataFile = Path.of(dataFile);
+        this.menuRepository = menuRepository;
     }
 
-    public synchronized List<MenuItemRecord> list(String token) {
+    public List<MenuItemRecord> list(String token) {
         authService.currentUser(token);
         return sorted(readAll());
     }
 
-    public synchronized List<MenuItemRecord> save(List<MenuItemRecord> request, String token) {
+    public List<MenuItemRecord> save(List<MenuItemRecord> request, String token) {
         authService.requireAdminUser(token);
         if (request == null || request.isEmpty()) {
             throw new BusinessException("菜单不能为空");
         }
-        Map<String, MenuItemRecord> defaultMap = DEFAULT_MENUS.stream().collect(Collectors.toMap(MenuItemRecord::code, Function.identity()));
+        Map<String, MenuItemRecord> defaultMap = DEFAULT_MENUS.stream()
+                .collect(Collectors.toMap(MenuItemRecord::code, Function.identity()));
         Set<String> validCodes = defaultMap.keySet();
         List<MenuItemRecord> normalized = request.stream()
                 .filter(item -> item != null && validCodes.contains(item.code()))
@@ -106,39 +92,16 @@ public class MenuService {
     }
 
     private List<MenuItemRecord> readAll() {
-        if (!Files.exists(dataFile)) {
+        List<MenuItemRecord> rows = menuRepository.readMenus();
+        if (rows.isEmpty()) {
             writeAll(DEFAULT_MENUS);
-            return new ArrayList<>(DEFAULT_MENUS);
+            return DEFAULT_MENUS;
         }
-        try {
-            List<MenuItemRecord> rows = new ArrayList<>(objectMapper.readValue(dataFile.toFile(), MENU_LIST_TYPE));
-            return mergeDefaults(rows);
-        } catch (IOException error) {
-            throw new IllegalStateException("读取菜单数据失败", error);
-        }
-    }
-
-    private List<MenuItemRecord> mergeDefaults(List<MenuItemRecord> rows) {
-        Map<String, MenuItemRecord> existing = rows.stream()
-                .filter(item -> item != null && item.code() != null)
-                .collect(Collectors.toMap(MenuItemRecord::code, Function.identity(), (left, right) -> left));
-        List<MenuItemRecord> merged = DEFAULT_MENUS.stream()
-                .map(item -> existing.containsKey(item.code()) ? normalize(existing.get(item.code()), item) : item)
-                .collect(Collectors.toCollection(ArrayList::new));
-        writeAll(merged);
-        return merged;
+        return rows;
     }
 
     private void writeAll(List<MenuItemRecord> rows) {
-        try {
-            Path parent = dataFile.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(dataFile.toFile(), rows);
-        } catch (IOException error) {
-            throw new IllegalStateException("保存菜单数据失败", error);
-        }
+        menuRepository.writeMenus(rows);
     }
 
     private String clean(String value, String fallback) {

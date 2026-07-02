@@ -1,27 +1,23 @@
 package com.tourcrm.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tourcrm.common.BusinessException;
 import com.tourcrm.dto.AdminUserUpdateRequest;
 import com.tourcrm.dto.AuthLoginRequest;
 import com.tourcrm.dto.AuthRegisterRequest;
 import com.tourcrm.dto.AuthUserResponse;
+import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.UserRecord;
 import com.tourcrm.dto.UserSession;
 import com.tourcrm.dto.UserUpdateRequest;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -46,45 +42,78 @@ public class AuthService {
 
     private static final String ADMIN_EMPLOYEE_CODE = "ADMIN";
     private static final String ADMIN_PASSWORD = "admin123";
+    private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
     private static final Pattern EMPLOYEE_CODE_PATTERN = Pattern.compile("^[A-Z]{2,5}$");
     private static final Set<String> ROLES = Set.of("ADMIN", "LEADER", "EMPLOYEE");
     private static final Set<String> POSITIONS = Set.of("OPERATION", "SALES");
-    private static final Set<String> MENUS = Set.of(MENU_CLUES, MENU_CLUE_CREATE, MENU_DEALS, MENU_STATS, MENU_PERFORMANCE, MENU_USERS, MENU_ASSIGN, MENU_ASSIGN_LOGS, MENU_OPERATION_LOGS, MENU_ORG, MENU_MENUS, MENU_SETTINGS);
+    private static final Set<String> MENUS = Set.of(
+            MENU_CLUES,
+            MENU_CLUE_CREATE,
+            MENU_DEALS,
+            MENU_STATS,
+            MENU_PERFORMANCE,
+            MENU_USERS,
+            MENU_ASSIGN,
+            MENU_ASSIGN_LOGS,
+            MENU_OPERATION_LOGS,
+            MENU_ORG,
+            MENU_MENUS,
+            MENU_SETTINGS
+    );
     private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    private static final TypeReference<List<UserRecord>> USER_LIST_TYPE = new TypeReference<>() {
-    };
 
-    private final ObjectMapper objectMapper;
-    private final Path dataFile;
+    private final UserRepository userRepository;
+    private final LoginSessionRepository loginSessionRepository;
+    private final long tokenExpirationMinutes;
+    private final boolean singleLogin;
 
-    public AuthService(ObjectMapper objectMapper, @Value("${app.user-data-file:data/users.json}") String dataFile) {
-        this.objectMapper = objectMapper;
-        this.dataFile = Path.of(dataFile);
+    public AuthService(
+            UserRepository userRepository,
+            LoginSessionRepository loginSessionRepository,
+            @Value("${app.jwt-expiration-minutes:1440}") long tokenExpirationMinutes,
+            @Value("${app.auth.single-login:false}") boolean singleLogin
+    ) {
+        this.userRepository = userRepository;
+        this.loginSessionRepository = loginSessionRepository;
+        this.tokenExpirationMinutes = tokenExpirationMinutes;
+        this.singleLogin = singleLogin;
     }
 
-    public synchronized AuthUserResponse login(AuthLoginRequest request) {
+    public AuthUserResponse login(AuthLoginRequest request) {
         String employeeCode = normalizeEmployeeCode(request.employeeCode());
-        Optional<UserRecord> matched = readAll().stream()
-                .filter(user -> user.employeeCode().equals(employeeCode))
-                .findFirst();
-        if (matched.isEmpty() || !matched.get().password().equals(request.password())) {
+        Optional<UserRecord> matched = userRepository.findUserByEmployeeCode(employeeCode).map(this::normalizeUser);
+        if (matched.isEmpty() || !matchesPassword(request.password(), matched.get().password())) {
             throw new BusinessException("员工编号或密码错误");
         }
+        upgradePasswordIfNeeded(matched.get(), request.password());
         return toAuthResponse(matched.get());
     }
 
-    public synchronized List<UserRecord> listUsers(String token) {
+    public List<UserRecord> listUsers(String token) {
         requireAdmin(token);
         return readAll().stream()
                 .sorted(Comparator.comparing(UserRecord::createdAt).reversed())
                 .toList();
     }
 
-    synchronized List<UserRecord> listAllUsersForSystem() {
+    public PageResponse<UserRecord> listUsersPage(Integer page, Integer pageSize, String token) {
+        requireAdmin(token);
+        ensureAdminUser(new ArrayList<>(userRepository.readUsers()));
+        PageResponse<UserRecord> pageResponse = userRepository.queryUsersPage(page, pageSize);
+        return new PageResponse<>(
+                normalizeUsers(pageResponse.records()),
+                pageResponse.total(),
+                pageResponse.page(),
+                pageResponse.pageSize(),
+                pageResponse.hasMore()
+        );
+    }
+
+    List<UserRecord> listAllUsersForSystem() {
         return readAll();
     }
 
-    public synchronized List<UserRecord> listLeaders(String token) {
+    public List<UserRecord> listLeaders(String token) {
         requireAdmin(token);
         return readAll().stream()
                 .filter(user -> "LEADER".equals(user.role()) || "ADMIN".equals(user.role()))
@@ -92,7 +121,7 @@ public class AuthService {
                 .toList();
     }
 
-    public synchronized List<UserRecord> listSalesCandidates(String token) {
+    public List<UserRecord> listSalesCandidates(String token) {
         if (!hasMenuPermission(token, MENU_ASSIGN) && !hasMenuPermission(token, MENU_DEALS)) {
             throw new BusinessException("没有分配管理权限，请联系管理员开通");
         }
@@ -102,7 +131,7 @@ public class AuthService {
                 .toList();
     }
 
-    public synchronized List<UserRecord> usersVisibleTo(String token) {
+    public List<UserRecord> usersVisibleTo(String token) {
         UserSession currentUser = currentUser(token);
         List<UserRecord> users = readAll();
         if ("ADMIN".equals(currentUser.role())) {
@@ -119,13 +148,13 @@ public class AuthService {
                 .toList();
     }
 
-    public synchronized UserRecord createUser(AuthRegisterRequest request, String token) {
+    @Transactional
+    public UserRecord createUser(AuthRegisterRequest request, String token) {
         requireAdmin(token);
         validateRegisterRequest(request);
         List<UserRecord> users = readAll();
         String employeeCode = normalizeEmployeeCode(request.employeeCode());
-        boolean exists = users.stream().anyMatch(user -> user.employeeCode().equals(employeeCode));
-        if (exists) {
+        if (userRepository.userExists(employeeCode)) {
             throw new BusinessException("员工编号已存在");
         }
 
@@ -138,65 +167,66 @@ public class AuthService {
         UserRecord user = new UserRecord(
                 request.name().trim(),
                 employeeCode,
-                request.password(),
+                encodePassword(request.password()),
                 role,
                 position,
                 leaderEmployeeCode,
                 normalizeMenus(request.menuPermissions(), role, position),
                 LocalDateTime.now().format(DATE_TIME_FORMAT)
         );
-        users.add(user);
-        writeAll(users);
+        userRepository.writeUser(user);
         return user;
     }
 
-    public synchronized UserRecord updateUser(String employeeCode, AdminUserUpdateRequest request, String token) {
+    @Transactional
+    public UserRecord updateUser(String employeeCode, AdminUserUpdateRequest request, String token) {
         requireAdmin(token);
         String normalizedEmployeeCode = normalizeEmployeeCode(employeeCode);
         List<UserRecord> users = readAll();
-        for (int i = 0; i < users.size(); i++) {
-            UserRecord old = users.get(i);
-            if (!old.employeeCode().equals(normalizedEmployeeCode)) {
-                continue;
-            }
-            String role = normalizeRole(request.role(), old.role());
-            String position = normalizePosition(request.position(), old.position());
-            String leaderEmployeeCode = normalizeNullableEmployeeCode(request.leaderEmployeeCode());
-            if ("ADMIN".equals(old.employeeCode())) {
-                role = "ADMIN";
-                leaderEmployeeCode = null;
-            }
-            if ("EMPLOYEE".equals(role) && !position.equals(old.position())) {
-                leaderEmployeeCode = null;
-            }
-            if ("ADMIN".equals(role) || "LEADER".equals(role)) {
-                leaderEmployeeCode = null;
-            }
-            if ("EMPLOYEE".equals(role) && StringUtils.hasText(leaderEmployeeCode)) {
-                validateLeader(users, leaderEmployeeCode, position);
-            }
-            validateNameAndPassword(request.name(), request.password(), old.password());
-            UserRecord updated = new UserRecord(
-                    request.name().trim(),
-                    old.employeeCode(),
-                    StringUtils.hasText(request.password()) ? request.password() : old.password(),
-                    role,
-                    position,
-                    leaderEmployeeCode,
-                    normalizeMenus(request.menuPermissions(), role, position),
-                    old.createdAt()
-            );
-            users.set(i, updated);
-            if ("LEADER".equals(old.role()) && (!"LEADER".equals(role) || !position.equals(old.position()))) {
-                users = releaseMembers(users, old.employeeCode());
-            }
-            writeAll(users);
-            return updated;
+        Optional<UserRecord> oldOptional = userRepository.findUserByEmployeeCode(normalizedEmployeeCode).map(this::normalizeUser);
+        if (oldOptional.isEmpty()) {
+            throw new BusinessException("员工账号不存在");
         }
-        throw new BusinessException("员工账号不存在");
+        UserRecord old = oldOptional.get();
+        String role = normalizeRole(request.role(), old.role());
+        String position = normalizePosition(request.position(), old.position());
+        String leaderEmployeeCode = normalizeNullableEmployeeCode(request.leaderEmployeeCode());
+        if ("ADMIN".equals(old.employeeCode())) {
+            role = "ADMIN";
+            leaderEmployeeCode = null;
+        }
+        if ("EMPLOYEE".equals(role) && !position.equals(old.position())) {
+            leaderEmployeeCode = null;
+        }
+        if ("ADMIN".equals(role) || "LEADER".equals(role)) {
+            leaderEmployeeCode = null;
+        }
+        if ("EMPLOYEE".equals(role) && StringUtils.hasText(leaderEmployeeCode)) {
+            validateLeader(users, leaderEmployeeCode, position);
+        }
+        validateNameAndPassword(request.name(), request.password(), old.password());
+        UserRecord updated = new UserRecord(
+                request.name().trim(),
+                old.employeeCode(),
+                StringUtils.hasText(request.password()) ? encodePassword(request.password()) : old.password(),
+                role,
+                position,
+                leaderEmployeeCode,
+                normalizeMenus(request.menuPermissions(), role, position),
+                old.createdAt()
+        );
+        userRepository.writeUser(updated);
+        if ("LEADER".equals(old.role()) && (!"LEADER".equals(role) || !position.equals(old.position()))) {
+            userRepository.releaseMembersByLeader(old.employeeCode());
+        }
+        if (StringUtils.hasText(request.password())) {
+            loginSessionRepository.deleteSessionsByEmployeeCode(old.employeeCode());
+        }
+        return updated;
     }
 
-    public synchronized boolean deleteUser(String employeeCode, String token) {
+    @Transactional
+    public boolean deleteUser(String employeeCode, String token) {
         requireAdmin(token);
         String normalizedEmployeeCode = normalizeEmployeeCode(employeeCode);
         if (ADMIN_EMPLOYEE_CODE.equals(normalizedEmployeeCode)) {
@@ -205,63 +235,56 @@ public class AuthService {
         List<UserRecord> users = readAll();
         boolean removed = users.removeIf(user -> user.employeeCode().equals(normalizedEmployeeCode));
         if (removed) {
-            users = releaseMembers(users, normalizedEmployeeCode);
-            writeAll(users);
+            userRepository.releaseMembersByLeader(normalizedEmployeeCode);
+            userRepository.deleteUser(normalizedEmployeeCode);
         }
         return removed;
     }
 
-    public synchronized UserSession updateCurrentUser(UserUpdateRequest request, String token) {
+    @Transactional
+    public UserSession updateCurrentUser(UserUpdateRequest request, String token) {
         UserSession currentUser = currentUser(token);
-        List<UserRecord> users = readAll();
-        for (int i = 0; i < users.size(); i++) {
-            UserRecord old = users.get(i);
-            if (!old.employeeCode().equals(currentUser.employeeCode())) {
-                continue;
-            }
-            validateNameAndPassword(request.name(), request.password(), old.password());
-            UserRecord updated = new UserRecord(
-                    request.name().trim(),
-                    old.employeeCode(),
-                    StringUtils.hasText(request.password()) ? request.password() : old.password(),
-                    old.role(),
-                    old.position(),
-                    old.leaderEmployeeCode(),
-                    old.menuPermissions(),
-                    old.createdAt()
-            );
-            users.set(i, updated);
-            writeAll(users);
-            return toSession(updated);
+        Optional<UserRecord> oldOptional = userRepository.findUserByEmployeeCode(currentUser.employeeCode()).map(this::normalizeUser);
+        if (oldOptional.isEmpty()) {
+            throw new BusinessException("当前账号不存在，请重新登录");
         }
-        throw new BusinessException("当前账号不存在，请重新登录");
+        UserRecord old = oldOptional.get();
+        validateNameAndPassword(request.name(), request.password(), old.password());
+        UserRecord updated = new UserRecord(
+                request.name().trim(),
+                old.employeeCode(),
+                StringUtils.hasText(request.password()) ? encodePassword(request.password()) : old.password(),
+                old.role(),
+                old.position(),
+                old.leaderEmployeeCode(),
+                old.menuPermissions(),
+                old.createdAt()
+        );
+        userRepository.writeUser(updated);
+        if (StringUtils.hasText(request.password())) {
+            loginSessionRepository.deleteSessionsByEmployeeCode(old.employeeCode());
+        }
+        return toSession(updated);
     }
 
     public UserSession currentUser(String token) {
         if (!StringUtils.hasText(token)) {
-            return previewUser();
+            throw new BusinessException("请先登录");
         }
         String rawToken = token.replace("Bearer ", "").trim();
-        try {
-            String decoded = new String(Base64.getUrlDecoder().decode(rawToken), StandardCharsets.UTF_8);
-            String employeeCode = decoded.split(":", 2)[0];
-            return readAll().stream()
-                    .filter(user -> user.employeeCode().equals(employeeCode))
-                    .findFirst()
-                    .map(this::toSession)
-                    .orElse(previewUser());
-        } catch (IllegalArgumentException error) {
-            return previewUser();
+        Optional<String> employeeCode = loginSessionRepository.findSessionEmployeeCode(rawToken);
+        if (employeeCode.isEmpty()) {
+            throw new BusinessException("登录已过期，请重新登录");
         }
+        return userRepository.findUserByEmployeeCode(employeeCode.get())
+                .map(this::normalizeUser)
+                .map(this::toSession)
+                .orElseThrow(() -> new BusinessException("当前账号不存在，请重新登录"));
     }
 
     public boolean hasMenuPermission(String token, String menuCode) {
         UserSession currentUser = currentUser(token);
         return "ADMIN".equals(currentUser.role()) || currentUser.menuPermissions().contains(menuCode);
-    }
-
-    public UserSession previewUser() {
-        return new UserSession("Xbai", "XB", "EMPLOYEE", "OPERATION", null, defaultMenus("EMPLOYEE", "OPERATION"));
     }
 
     public void requireAdminUser(String token) {
@@ -312,14 +335,14 @@ public class AuthService {
         if ("ADMIN".equals(role)) {
             return List.copyOf(MENUS);
         }
-        List<String> source = (menuPermissions == null || menuPermissions.isEmpty()) ? defaultMenus(role, position) : menuPermissions;
+        List<String> source = (menuPermissions == null || menuPermissions.isEmpty()) ? defaultMenus(position) : menuPermissions;
         return source.stream()
                 .filter(MENUS::contains)
                 .distinct()
                 .toList();
     }
 
-    private List<String> defaultMenus(String role, String position) {
+    private List<String> defaultMenus(String position) {
         if ("SALES".equals(position)) {
             return List.of(MENU_ASSIGN, MENU_ASSIGN_LOGS, MENU_DEALS, MENU_STATS, MENU_PERFORMANCE);
         }
@@ -327,14 +350,18 @@ public class AuthService {
     }
 
     private AuthUserResponse toAuthResponse(UserRecord user) {
+        String token = createToken();
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(tokenExpirationMinutes);
+        loginSessionRepository.createSession(token, user.employeeCode(), expiresAt, singleLogin);
         return new AuthUserResponse(
-                createToken(user),
+                token,
                 user.name(),
                 user.employeeCode(),
                 user.role(),
                 user.position(),
                 user.leaderEmployeeCode(),
-                user.menuPermissions()
+                user.menuPermissions(),
+                expiresAt.format(DATE_TIME_FORMAT)
         );
     }
 
@@ -342,9 +369,44 @@ public class AuthService {
         return new UserSession(user.name(), user.employeeCode(), user.role(), user.position(), user.leaderEmployeeCode(), user.menuPermissions());
     }
 
-    private String createToken(UserRecord user) {
-        String tokenText = user.employeeCode() + ":" + System.currentTimeMillis();
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(tokenText.getBytes(StandardCharsets.UTF_8));
+    private String createToken() {
+        return java.util.UUID.randomUUID() + "." + java.util.UUID.randomUUID();
+    }
+
+    private boolean matchesPassword(String rawPassword, String storedPassword) {
+        if (!StringUtils.hasText(rawPassword) || !StringUtils.hasText(storedPassword)) {
+            return false;
+        }
+        if (isBcrypt(storedPassword)) {
+            return PASSWORD_ENCODER.matches(rawPassword, storedPassword);
+        }
+        return storedPassword.equals(rawPassword);
+    }
+
+    private void upgradePasswordIfNeeded(UserRecord user, String rawPassword) {
+        if (isBcrypt(user.password())) {
+            return;
+        }
+        userRepository.findUserByEmployeeCode(user.employeeCode())
+                .map(this::normalizeUser)
+                .ifPresent(old -> userRepository.writeUser(new UserRecord(
+                        old.name(),
+                        old.employeeCode(),
+                        encodePassword(rawPassword),
+                        old.role(),
+                        old.position(),
+                        old.leaderEmployeeCode(),
+                        old.menuPermissions(),
+                        old.createdAt()
+                )));
+    }
+
+    private String encodePassword(String rawPassword) {
+        return PASSWORD_ENCODER.encode(rawPassword);
+    }
+
+    private boolean isBcrypt(String value) {
+        return StringUtils.hasText(value) && (value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$"));
     }
 
     private String normalizeEmployeeCode(String employeeCode) {
@@ -357,54 +419,30 @@ public class AuthService {
     }
 
     private List<UserRecord> readAll() {
-        List<UserRecord> users;
-        if (!Files.exists(dataFile)) {
-            users = new ArrayList<>();
-        } else {
-            try {
-                users = new ArrayList<>(objectMapper.readValue(dataFile.toFile(), USER_LIST_TYPE));
-            } catch (IOException error) {
-                throw new IllegalStateException("读取用户数据失败", error);
-            }
-        }
+        List<UserRecord> users = new ArrayList<>(userRepository.readUsers());
         users = normalizeUsers(users);
         return ensureAdminUser(users);
     }
 
     private List<UserRecord> normalizeUsers(List<UserRecord> users) {
         return users.stream()
-                .map(user -> {
-                    String role = StringUtils.hasText(user.role()) ? user.role() : "EMPLOYEE";
-                    String position = StringUtils.hasText(user.position()) ? user.position() : "OPERATION";
-                    return new UserRecord(
-                            user.name(),
-                            normalizeEmployeeCode(user.employeeCode()),
-                            user.password(),
-                            role,
-                            position,
-                            normalizeNullableEmployeeCode(user.leaderEmployeeCode()),
-                            normalizeMenus(user.menuPermissions(), role, position),
-                            user.createdAt()
-                    );
-                })
+                .map(this::normalizeUser)
                 .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
     }
 
-    private List<UserRecord> releaseMembers(List<UserRecord> users, String leaderEmployeeCode) {
-        return users.stream()
-                .map(user -> leaderEmployeeCode.equals(user.leaderEmployeeCode())
-                        ? new UserRecord(
-                        user.name(),
-                        user.employeeCode(),
-                        user.password(),
-                        user.role(),
-                        user.position(),
-                        null,
-                        user.menuPermissions(),
-                        user.createdAt()
-                )
-                        : user)
-                .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+    private UserRecord normalizeUser(UserRecord user) {
+        String role = StringUtils.hasText(user.role()) ? user.role() : "EMPLOYEE";
+        String position = StringUtils.hasText(user.position()) ? user.position() : "OPERATION";
+        return new UserRecord(
+                user.name(),
+                normalizeEmployeeCode(user.employeeCode()),
+                user.password(),
+                role,
+                position,
+                normalizeNullableEmployeeCode(user.leaderEmployeeCode()),
+                normalizeMenus(user.menuPermissions(), role, position),
+                user.createdAt()
+        );
     }
 
     private void validateLeader(List<UserRecord> users, String leaderEmployeeCode, String position) {
@@ -425,29 +463,18 @@ public class AuthService {
         if (exists) {
             return users;
         }
-        users.add(new UserRecord(
+        UserRecord admin = new UserRecord(
                 "admin",
                 ADMIN_EMPLOYEE_CODE,
-                ADMIN_PASSWORD,
+                encodePassword(ADMIN_PASSWORD),
                 "ADMIN",
                 "OPERATION",
                 null,
                 List.copyOf(MENUS),
                 LocalDateTime.now().format(DATE_TIME_FORMAT)
-        ));
-        writeAll(users);
+        );
+        users.add(admin);
+        userRepository.writeUser(admin);
         return users;
-    }
-
-    private void writeAll(List<UserRecord> rows) {
-        try {
-            Path parent = dataFile.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(dataFile.toFile(), rows);
-        } catch (IOException error) {
-            throw new IllegalStateException("保存用户数据失败", error);
-        }
     }
 }

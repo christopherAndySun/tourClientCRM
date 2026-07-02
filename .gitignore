@@ -1,11 +1,14 @@
 crm-web/node_modules/
 crm-web/dist/
 crm-server/target/
-crm-server/data/*.json
+crm-server/data/
+crm-server/uploads/
+crm-server/server-run*.log
 logs/
 tools/
 .agents/
 .git.invalid-*/
+backups/
 
 *.log
 *.tmp

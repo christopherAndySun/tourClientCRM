@@ -5,6 +5,7 @@ import com.tourcrm.dto.AdminUserUpdateRequest;
 import com.tourcrm.dto.AuthLoginRequest;
 import com.tourcrm.dto.AuthRegisterRequest;
 import com.tourcrm.dto.AuthUserResponse;
+import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.UserRecord;
 import com.tourcrm.dto.UserSession;
 import com.tourcrm.dto.UserUpdateRequest;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -55,8 +57,12 @@ public class AuthController {
     }
 
     @GetMapping("/users")
-    public ApiResponse<List<UserRecord>> users(@RequestHeader(value = "Authorization", required = false) String token) {
-        return ApiResponse.ok(authService.listUsers(token));
+    public ApiResponse<PageResponse<UserRecord>> users(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
+            @RequestHeader(value = "Authorization", required = false) String token
+    ) {
+        return ApiResponse.ok(authService.listUsersPage(page, pageSize, token));
     }
 
     @GetMapping("/leaders")

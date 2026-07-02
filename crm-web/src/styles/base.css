@@ -31,11 +31,13 @@ html,
 body,
 #app {
   width: 100%;
+  max-width: 100%;
   min-height: 100%;
   margin: 0;
 }
 
 body {
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 8% 8%, rgba(178, 174, 250, 0.45), transparent 28%),
     radial-gradient(circle at 92% 14%, rgba(113, 164, 213, 0.24), transparent 24%),
@@ -141,6 +143,7 @@ body::before {
 
 .content {
   min-width: 0;
+  max-width: 100%;
   height: 100vh;
   height: 100dvh;
   min-height: 0;
@@ -151,6 +154,7 @@ body::before {
 
 .toolbar {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
@@ -179,6 +183,8 @@ body::before {
 
 .panel {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   background: var(--panel-bg);
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: var(--radius-lg);
@@ -213,8 +219,14 @@ body::before {
 .clue-card,
 .deal-card,
 .performance-card,
-.user-card {
+.user-card,
+.assign-log-card,
+.stat-card,
+.rank-row,
+.tree-row {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.78) !important;
   border-radius: 18px !important;
   background:
@@ -247,6 +259,8 @@ body::before {
 
 .mobile-list {
   display: none;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .el-button {
@@ -465,16 +479,29 @@ body::before {
 }
 
 @media (max-width: 760px) {
+  html,
+  body,
+  #app {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+    touch-action: pan-y;
+  }
+
   body {
     font-size: 15px;
   }
 
   .app-shell {
     display: block;
+    width: 100%;
+    max-width: 100%;
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
-    overflow: visible;
+    overflow-x: hidden;
   }
 
   .side-nav {
@@ -516,12 +543,48 @@ body::before {
   }
 
   .content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
     overflow: visible;
     overflow-x: hidden;
+    overflow-x: clip;
     padding: 0 12px 24px;
+  }
+
+  img,
+  svg,
+  canvas,
+  video {
+    max-width: 100%;
+  }
+
+  .el-scrollbar,
+  .el-scrollbar__wrap,
+  .el-scrollbar__view,
+  .el-select-dropdown,
+  .el-picker-panel,
+  .el-date-range-picker,
+  .el-message-box,
+  .el-dialog {
+    max-width: calc(100vw - 16px);
+  }
+
+  .content > section,
+  .content > div,
+  .toolbar,
+  .panel,
+  .mobile-list,
+  .clue-card,
+  .deal-card,
+  .performance-card,
+  .user-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .toolbar {
@@ -536,6 +599,15 @@ body::before {
   .panel {
     padding: 14px;
     border-radius: 18px;
+    overflow-x: hidden;
+  }
+
+  .filter-panel {
+    padding-left: 24px !important;
+  }
+
+  .filter-panel::before {
+    left: 10px;
   }
 
   .filter-panel .el-button,
@@ -543,6 +615,29 @@ body::before {
   .filter-panel .el-select,
   .filter-panel .el-date-editor {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .el-input,
+  .el-select,
+  .el-date-editor,
+  .el-date-editor.el-input__wrapper,
+  .el-range-editor.el-input__wrapper,
+  .el-textarea,
+  .el-upload,
+  .el-form-item,
+  .el-form-item__content {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .el-range-editor.el-input__wrapper {
+    width: 100% !important;
+  }
+
+  .el-range-editor .el-range-input {
+    min-width: 0;
   }
 
   .desktop-table {
@@ -552,6 +647,34 @@ body::before {
   .mobile-list {
     display: grid;
     gap: 12px;
+    overflow-x: hidden;
+  }
+
+  .clue-card,
+  .deal-card,
+  .performance-card,
+  .user-card,
+  .assign-log-card,
+  .stat-card,
+  .rank-row,
+  .tree-row {
+    overflow: hidden;
+  }
+
+  .clue-card *,
+  .deal-card *,
+  .performance-card *,
+  .user-card *,
+  .assign-log-card *,
+  .stat-card *,
+  .rank-row *,
+  .tree-row *,
+  .compact-meta,
+  .contact-line {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .card-actions,

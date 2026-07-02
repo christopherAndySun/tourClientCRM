@@ -12,6 +12,7 @@ import com.tourcrm.dto.ClueStatusUpdateRequest;
 import com.tourcrm.dto.CustomerHistoryResponse;
 import com.tourcrm.dto.EmployeeCluesResponse;
 import com.tourcrm.dto.OperationLogReportRow;
+import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.PerformanceExportRow;
 import com.tourcrm.dto.PerformanceRowResponse;
 import com.tourcrm.service.CustomerClueService;
@@ -44,7 +45,7 @@ public class CustomerClueController {
     }
 
     @GetMapping
-    public ApiResponse<List<ClueResponse>> list(
+    public ApiResponse<PageResponse<ClueResponse>> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String contactInfo,
@@ -54,62 +55,74 @@ public class CustomerClueController {
             @RequestParam(required = false) String assignedSales,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.list(keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, token));
+        return ApiResponse.ok(customerClueService.listPage(keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/sales-pool/public")
-    public ApiResponse<List<ClueResponse>> publicSalesPool(
+    public ApiResponse<PageResponse<ClueResponse>> publicSalesPool(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String contactInfo,
             @RequestParam(required = false) String sourcePlatform,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) String assignedSales,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.publicSalesPool(keyword, customerCode, contactInfo, sourcePlatform, assignedSales, startDate, endDate, token));
+        return ApiResponse.ok(customerClueService.publicSalesPoolPage(keyword, customerCode, contactInfo, sourcePlatform, status, assignedSales, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/sales-pool/mine")
-    public ApiResponse<List<ClueResponse>> mySalesPool(
+    public ApiResponse<PageResponse<ClueResponse>> mySalesPool(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String contactInfo,
             @RequestParam(required = false) String sourcePlatform,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) String assignedSales,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.mySalesPool(keyword, customerCode, contactInfo, sourcePlatform, assignedSales, startDate, endDate, token));
+        return ApiResponse.ok(customerClueService.mySalesPoolPage(keyword, customerCode, contactInfo, sourcePlatform, status, assignedSales, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/assign-logs")
-    public ApiResponse<List<AssignLogReportRow>> assignLogs(
+    public ApiResponse<PageResponse<AssignLogReportRow>> assignLogs(
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String operator,
             @RequestParam(required = false) String salesEmployeeCode,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.assignLogReport(customerCode, action, operator, salesEmployeeCode, startDate, endDate, token));
+        return ApiResponse.ok(customerClueService.assignLogReportPage(customerCode, action, operator, salesEmployeeCode, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/operation-logs")
-    public ApiResponse<List<OperationLogReportRow>> operationLogs(
+    public ApiResponse<PageResponse<OperationLogReportRow>> operationLogs(
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String operator,
             @RequestParam(required = false) String field,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.operationLogReport(customerCode, operator, field, startDate, endDate, token));
+        return ApiResponse.ok(customerClueService.operationLogReportPage(customerCode, operator, field, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/export")
@@ -131,7 +144,7 @@ public class CustomerClueController {
         response.setCharacterEncoding("utf-8");
         response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + fileName);
 
-        List<ClueExportRow> rows = customerClueService.list(keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, token).stream()
+        List<ClueExportRow> rows = customerClueService.listForExport(keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, token).stream()
                 .map(ClueExportRow::new)
                 .toList();
         EasyExcel.write(response.getOutputStream(), ClueExportRow.class).sheet("客户线索").doWrite(rows);
@@ -147,14 +160,16 @@ public class CustomerClueController {
     }
 
     @GetMapping("/stats/detail")
-    public ApiResponse<List<ClueResponse>> statsDetail(
+    public ApiResponse<PageResponse<ClueResponse>> statsDetail(
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String value,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.statsDetail(startDate, endDate, type, value, token));
+        return ApiResponse.ok(customerClueService.statsDetailPage(startDate, endDate, type, value, page, pageSize, token));
     }
 
     @GetMapping("/performance")
@@ -189,14 +204,19 @@ public class CustomerClueController {
             @PathVariable String employeeCode,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.employeeClues(employeeCode, startDate, endDate, token));
+        return ApiResponse.ok(customerClueService.employeeClues(employeeCode, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/{customerCode}")
-    public ApiResponse<ClueResponse> detail(@PathVariable String customerCode) {
-        return customerClueService.findByCustomerCode(customerCode)
+    public ApiResponse<ClueResponse> detail(
+            @PathVariable String customerCode,
+            @RequestHeader(value = "Authorization", required = false) String token
+    ) {
+        return customerClueService.findByCustomerCode(customerCode, token)
                 .map(ApiResponse::ok)
                 .orElseGet(() -> ApiResponse.fail("客户线索不存在"));
     }
@@ -272,7 +292,10 @@ public class CustomerClueController {
     }
 
     @DeleteMapping("/{customerCode}")
-    public ApiResponse<Boolean> delete(@PathVariable String customerCode) {
-        return ApiResponse.ok(customerClueService.delete(customerCode));
+    public ApiResponse<Boolean> delete(
+            @PathVariable String customerCode,
+            @RequestHeader(value = "Authorization", required = false) String token
+    ) {
+        return ApiResponse.ok(customerClueService.delete(customerCode, token));
     }
 }

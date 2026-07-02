@@ -34,7 +34,7 @@
         <el-input v-model="filters.keyword" class="filter-field" clearable placeholder="备注等模糊搜索" />
       </template>
       <template #actions>
-        <el-button type="primary" :loading="loading" @click="fetchRows">查询</el-button>
+        <el-button type="primary" :loading="loading" @click="searchRows">查询</el-button>
         <el-button :loading="exporting" @click="downloadExcel">导出 Excel</el-button>
       </template>
     </FilterPanel>
@@ -72,10 +72,15 @@
           </template>
         </el-table-column>
       </el-table>
-      <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" :total="rows.length" />
+      <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" :total="total" />
     </div>
 
-    <div ref="mobileListRef" class="mobile-list">
+    <div ref="mobileListRef" class="mobile-list" v-loading="loading">
+      <div v-if="loading && !rows.length" class="mobile-loading-panel">
+        <div class="loading-line strong"></div>
+        <div class="loading-line"></div>
+        <div class="loading-line short"></div>
+      </div>
       <article v-for="row in mobileRows" :key="row.customerCode" class="clue-card">
         <div class="card-head">
           <strong>{{ row.customerCode }}</strong>
@@ -94,7 +99,8 @@
         </TextActions>
       </article>
       <div v-if="rows.length" class="mobile-load-state">
-        <span v-if="mobileRows.length < rows.length">上滑加载更多</span>
+        <span v-if="loadingMore">加载中...</span>
+        <span v-else-if="hasMore">上滑加载更多</span>
         <span v-else>已经到底了</span>
       </div>
       <el-empty v-if="!loading && !rows.length" description="暂无客户线索" />
@@ -119,6 +125,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteClue, exportClues, listClues } from '../api/clue'
+import { downloadBlob, todayFilename } from '../utils/download'
 import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
@@ -140,10 +147,12 @@ const filters = reactive({
 const filterExpanded = ref(false)
 const dateRange = ref([])
 const loading = ref(false)
+const loadingMore = ref(false)
 const exporting = ref(false)
 const rows = ref([])
+const total = ref(0)
+const hasMore = ref(false)
 const page = reactive({ current: 1, size: 10 })
-const mobileLoaded = ref(10)
 const mobileListRef = ref()
 const mobileFilterVisible = ref(false)
 const fabMoved = ref(false)
@@ -157,46 +166,70 @@ const fabStyle = computed(() => ({
 const canCreateClue = computed(() => {
   return authStore.user?.role === 'ADMIN' || authStore.user?.menuPermissions?.includes('CLUE_CREATE')
 })
-const desktopRows = computed(() => {
-  const start = (page.current - 1) * page.size
-  return rows.value.slice(start, start + page.size)
-})
-const mobileRows = computed(() => rows.value.slice(0, mobileLoaded.value))
+const desktopRows = computed(() => rows.value)
+const mobileRows = computed(() => rows.value)
 
-async function fetchRows() {
-  loading.value = true
+async function fetchRows({ append = false } = {}) {
+  const isMobile = window.matchMedia('(max-width: 760px)').matches
+  if (append) {
+    if (loading.value || loadingMore.value || !hasMore.value) return
+    loadingMore.value = true
+  } else {
+    loading.value = true
+    if (isMobile) {
+      page.current = 1
+    }
+  }
   try {
     const res = await listClues({
       ...filterParams(),
       startDate: dateRange.value?.[0],
-      endDate: dateRange.value?.[1]
+      endDate: dateRange.value?.[1],
+      page: page.current,
+      pageSize: page.size
     })
-    rows.value = res.data || []
-    page.current = 1
-    mobileLoaded.value = 10
+    const payload = normalizePage(res.data)
+    rows.value = append ? [...rows.value, ...payload.records] : payload.records
+    total.value = payload.total
+    hasMore.value = payload.hasMore
   } finally {
     loading.value = false
+    loadingMore.value = false
+  }
+}
+
+function searchRows() {
+  if (page.current === 1) {
+    fetchRows()
+    return
+  }
+  page.current = 1
+}
+
+function normalizePage(data) {
+  if (Array.isArray(data)) {
+    return { records: data, total: data.length, hasMore: false }
+  }
+  return {
+    records: data?.records || [],
+    total: data?.total || 0,
+    hasMore: Boolean(data?.hasMore)
   }
 }
 
 async function downloadExcel() {
   exporting.value = true
+  ElMessage.info('????????????...')
   try {
     const blob = await exportClues({
       ...filterParams(),
       startDate: dateRange.value?.[0],
       endDate: dateRange.value?.[1]
     })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `客户线索-${new Date().toISOString().slice(0, 10)}.xlsx`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+    downloadBlob(blob, todayFilename('????'))
+    ElMessage.success('?????????')
   } catch (error) {
-    await showError(error.message || '导出失败，请稍后重试')
+    await showError(error.message || '??????????????')
   } finally {
     exporting.value = false
   }
@@ -257,10 +290,11 @@ function toggleMobileFilter() {
 
 function handleMobileScroll() {
   if (!window.matchMedia('(max-width: 760px)').matches) return
-  if (mobileLoaded.value >= rows.value.length || loading.value) return
+  if (!hasMore.value || loading.value || loadingMore.value) return
   const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 180
   if (nearBottom) {
-    mobileLoaded.value = Math.min(mobileLoaded.value + 10, rows.value.length)
+    page.current += 1
+    fetchRows({ append: true })
   }
 }
 
@@ -313,7 +347,14 @@ function loadFabPosition() {
 }
 
 watch(() => page.size, () => {
+  const wasFirstPage = page.current === 1
   page.current = 1
+  if (wasFirstPage) fetchRows()
+})
+
+watch(() => page.current, (current, previous) => {
+  if (window.matchMedia('(max-width: 760px)').matches) return
+  if (current !== previous) fetchRows()
 })
 </script>
 
@@ -379,6 +420,41 @@ watch(() => page.size, () => {
     color: var(--text-muted);
     text-align: center;
     font-size: 13px;
+  }
+
+  .mobile-loading-panel {
+    display: grid;
+    gap: 10px;
+    padding: 18px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .loading-line {
+    height: 14px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(178, 174, 250, 0.22), rgba(255, 255, 255, 0.78), rgba(178, 174, 250, 0.22));
+    background-size: 220% 100%;
+    animation: loading-shimmer 1.2s linear infinite;
+  }
+
+  .loading-line.strong {
+    width: 72%;
+    height: 18px;
+  }
+
+  .loading-line.short {
+    width: 46%;
+  }
+
+  @keyframes loading-shimmer {
+    from {
+      background-position: 120% 0;
+    }
+    to {
+      background-position: -120% 0;
+    }
   }
 
   .mobile-fab {

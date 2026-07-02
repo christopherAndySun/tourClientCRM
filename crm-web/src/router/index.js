@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { listMenus } from '../api/menu'
 import { FALLBACK_MENUS, mergeMenus } from '../composables/menuConfig'
+import { getStoredUser, getToken } from '../utils/session'
 
 const LoginView = () => import('../views/LoginView.vue')
 const DashboardView = () => import('../views/DashboardView.vue')
@@ -50,14 +51,14 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  const token = localStorage.getItem('crm_token')
+  const token = getToken()
   if (to.path !== '/login' && !token) {
     return '/login'
   }
   if (to.path === '/login' && token) {
     return '/index'
   }
-  const user = JSON.parse(localStorage.getItem('crm_user') || 'null')
+  const user = getStoredUser()
   if (to.meta.adminOnly && user?.role !== 'ADMIN') {
     return firstAllowedPath(user)
   }

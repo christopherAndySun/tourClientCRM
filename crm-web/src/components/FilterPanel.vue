@@ -62,6 +62,16 @@ defineEmits(['update:expanded'])
   min-width: max-content;
 }
 
+.filter-more {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(92, 108, 255, 0.22);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
 .crm-filter-panel :deep(.el-input),
 .crm-filter-panel :deep(.el-select),
 .crm-filter-panel :deep(.el-date-editor) {
