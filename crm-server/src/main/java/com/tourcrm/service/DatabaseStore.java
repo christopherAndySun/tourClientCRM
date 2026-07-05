@@ -106,6 +106,21 @@ public class DatabaseStore {
         }
     }
 
+    public Optional<String> findRootCustomerCodeByContactKey(String contactKey) {
+        if (!StringUtils.hasText(contactKey)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                    "SELECT root_customer_code FROM crm_customer_contacts WHERE contact_key = ?",
+                    String.class,
+                    contactKey
+            ));
+        } catch (EmptyResultDataAccessException error) {
+            return Optional.empty();
+        }
+    }
+
     public Optional<ClueResponse> findClueByCustomerCodeForUpdate(String customerCode) {
         if (!StringUtils.hasText(customerCode)) {
             return Optional.empty();
@@ -1036,6 +1051,7 @@ public class DatabaseStore {
                             """,
                     clueParams(row));
             replaceClueChildren(row);
+            upsertCustomerProfile(row);
             return true;
         } catch (DuplicateKeyException error) {
             return false;
@@ -1089,6 +1105,49 @@ public class DatabaseStore {
                               updated_at_value = VALUES(updated_at_value)
                             """,
                 clueParams(row));
+        upsertCustomerProfile(row);
+    }
+
+    private void upsertCustomerProfile(ClueResponse row) {
+        String contactKey = contactKey(row.contactInfo());
+        String rootCustomerCode = rootCustomerCode(row);
+        jdbcTemplate.update("""
+                        INSERT INTO crm_customer_profiles (
+                          root_customer_code, primary_contact_key, contact_info, created_by_code, created_at_text, updated_at_text
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                          primary_contact_key = COALESCE(NULLIF(VALUES(primary_contact_key), ''), primary_contact_key),
+                          contact_info = COALESCE(NULLIF(VALUES(contact_info), ''), contact_info),
+                          updated_at_text = VALUES(updated_at_text)
+                        """,
+                rootCustomerCode,
+                nullIfBlank(contactKey),
+                nullIfBlank(row.contactInfo()),
+                row.uploaderEmployeeCode(),
+                row.createdAt(),
+                row.updatedAt());
+        if (StringUtils.hasText(contactKey)) {
+            jdbcTemplate.update("""
+                            INSERT INTO crm_customer_contacts (contact_key, root_customer_code, contact_info, created_at_text)
+                            VALUES (?, ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE
+                              contact_info = VALUES(contact_info),
+                              root_customer_code = root_customer_code
+                            """,
+                    contactKey,
+                    rootCustomerCode,
+                    row.contactInfo(),
+                    row.createdAt());
+        }
+    }
+
+    private String rootCustomerCode(ClueResponse row) {
+        return StringUtils.hasText(row.originalCustomerCode()) ? row.originalCustomerCode() : row.customerCode();
+    }
+
+    private String nullIfBlank(String value) {
+        return StringUtils.hasText(value) ? value : null;
     }
 
     private Object[] clueParams(ClueResponse row) {

@@ -1,0 +1,95 @@
+package com.tourcrm.service;
+
+import com.tourcrm.dto.DealResponse;
+import com.tourcrm.dto.DealSaveRequest;
+import com.tourcrm.dto.UserSession;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class DealServiceTest {
+
+    private static final String TOKEN = "token";
+    private final AuthService authService = mock(AuthService.class);
+    private final CustomerClueService customerClueService = mock(CustomerClueService.class);
+    private final DatabaseStore databaseStore = mock(DatabaseStore.class);
+    private final DealService service = new DealService(authService, customerClueService, databaseStore);
+
+    @Test
+    void createDealUsesDatabaseSequenceAndSyncsClueStatus() {
+        when(authService.hasMenuPermission(TOKEN, AuthService.MENU_DEALS)).thenReturn(true);
+        when(authService.currentUser(TOKEN)).thenReturn(salesUser());
+        when(databaseStore.dealExistsForCustomer("XA0705-01")).thenReturn(false);
+        when(databaseStore.nextDealDailySequence(any(), eq("TOTAL"))).thenReturn(7);
+        when(databaseStore.nextDealDailySequence(any(), eq("USER:SA"))).thenReturn(2);
+        when(databaseStore.insertDeal(any())).thenReturn(true);
+
+        DealResponse created = service.create(saveRequest(), TOKEN);
+
+        assertThat(created.dealCode()).startsWith("D");
+        assertThat(created.totalDealSequence()).isEqualTo(7);
+        assertThat(created.personalDealSequence()).isEqualTo(2);
+        verify(customerClueService).markDealed("XA0705-01");
+    }
+
+    @Test
+    void cancelDealWritesRefundAndSyncsClueStatus() {
+        when(authService.hasMenuPermission(TOKEN, AuthService.MENU_DEALS)).thenReturn(true);
+        when(authService.currentUser(TOKEN)).thenReturn(salesUser());
+        when(databaseStore.findDealByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
+
+        boolean result = service.cancel("D0705007", "客户退单", "100", "2026-07-05 12:00", TOKEN);
+
+        assertThat(result).isTrue();
+        ArgumentCaptor<DealResponse> captor = ArgumentCaptor.forClass(DealResponse.class);
+        verify(databaseStore).writeDeal(captor.capture());
+        assertThat(captor.getValue().status()).isEqualTo("REFUNDED");
+        assertThat(captor.getValue().refundAmount()).isEqualTo("100");
+        verify(customerClueService).markRefunded("XA0705-01", "客户退单", "100", "2026-07-05 12:00");
+    }
+
+    private DealSaveRequest saveRequest() {
+        return new DealSaveRequest("XA0705-01", "客户A", "500", "1500", "2026-07-05", "2026-07-05", "报价", "2026-08-01", "行程", "2026-07-05");
+    }
+
+    private DealResponse deal(String status) {
+        return new DealResponse(
+                "D0705007",
+                "XA0705-01",
+                "客户A",
+                "500",
+                "1500",
+                "2026-07-05",
+                "2026-07-05",
+                "报价",
+                "2026-08-01",
+                "行程",
+                "2026-07-05",
+                "销售A",
+                "SA",
+                7,
+                2,
+                status,
+                "",
+                "",
+                "",
+                "",
+                "",
+                "2026-07-05 10:00",
+                "2026-07-05 10:00"
+        );
+    }
+
+    private UserSession salesUser() {
+        return new UserSession("销售A", "SA", "EMPLOYEE", "SALES", "", "HEADQUARTERS", null, null, List.of(AuthService.MENU_DEALS));
+    }
+}

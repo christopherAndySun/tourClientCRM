@@ -204,9 +204,7 @@ public class CustomerClueService {
                 .orElseThrow(() -> new BusinessException("客户线索不存在"));
         String contactKey = normalizeContact(current.contactInfo());
         String rootCode = rootCustomerCode(current);
-        List<ClueResponse> candidateDemands = StringUtils.hasText(contactKey)
-                ? databaseStore.findCluesByContactKey(contactKey)
-                : databaseStore.findCluesByRootCustomerCode(rootCode);
+        List<ClueResponse> candidateDemands = findCustomerDemandRows(contactKey, rootCode);
         List<ClueResponse> demands = candidateDemands.stream()
                 .map(this::normalizeClue)
                 .filter(item -> canViewInWorkspace(item, currentUser, usersByCode))
@@ -221,22 +219,20 @@ public class CustomerClueService {
         UserSession currentUser = authService.currentUser(token);
         String normalizedContact = normalizeContact(request.contactInfo());
         databaseStore.acquireContactLock(normalizedContact);
-        List<ClueResponse> sameContactRows = StringUtils.hasText(normalizedContact)
-                ? databaseStore.findCluesByContactKey(normalizedContact).stream()
+        List<ClueResponse> sameCustomerRows = findCustomerDemandRows(normalizedContact, null).stream()
                 .map(this::normalizeClue)
-                .toList()
-                : List.of();
-        if (!sameContactRows.isEmpty() && !Boolean.TRUE.equals(request.allowRepeatDemand())) {
-            ClueResponse first = sameContactRows.get(0);
+                .toList();
+        if (!sameCustomerRows.isEmpty() && !Boolean.TRUE.equals(request.allowRepeatDemand())) {
+            ClueResponse first = sameCustomerRows.get(0);
             throw new BusinessException("\u5f53\u524d\u5ba2\u6237\u5df2\u7ecf\u88ab" + first.uploader() + "\u8054\u7cfb\u8fc7\uff0c\u8bf7\u4e0d\u8981\u91cd\u590d\u4fdd\u5b58");
         }
 
         String status = normalizeStatus(request.status(), "NEW");
         ensureFinalStatusHasDepositFlow(null, status);
         String now = nowText();
-        boolean repeatDemand = !sameContactRows.isEmpty();
-        String originalCustomerCode = repeatDemand ? rootCustomerCode(sameContactRows.get(0)) : null;
-        int demandSequence = repeatDemand ? sameContactRows.size() + 1 : 1;
+        boolean repeatDemand = !sameCustomerRows.isEmpty();
+        String originalCustomerCode = repeatDemand ? rootCustomerCode(sameCustomerRows.get(0)) : null;
+        int demandSequence = repeatDemand ? nextDemandSequence(sameCustomerRows) : 1;
         for (int attempt = 0; attempt < 30; attempt++) {
             int sequence = nextCustomerSequence(currentUser);
             ClueResponse clue = buildNewClue(
@@ -261,11 +257,11 @@ public class CustomerClueService {
     @Transactional
     public Optional<ClueResponse> update(String customerCode, ClueSaveRequest request, String token) {
         UserSession currentUser = authService.currentUser(token);
-        databaseStore.acquireContactLock(normalizeContact(request.contactInfo()));
-        ensureUniqueContactOnUpdate(request.contactInfo(), customerCode);
         Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
+            databaseStore.acquireContactLock(normalizeContact(request.contactInfo()));
+            ensureUniqueContactOnUpdate(request.contactInfo(), old);
             String status = normalizeStatus(request.status(), old.status());
             ensureFinalStatusHasDepositFlow(old, status);
             ClueResponse updated = new ClueResponse(
@@ -935,14 +931,49 @@ public class CustomerClueService {
         }
     }
 
-    private void ensureUniqueContactOnUpdate(String contactInfo, String currentCustomerCode) {
+    private List<ClueResponse> findCustomerDemandRows(String contactKey, String fallbackRootCustomerCode) {
+        Optional<String> profileRoot = databaseStore.findRootCustomerCodeByContactKey(contactKey);
+        if (profileRoot.isPresent()) {
+            return databaseStore.findCluesByRootCustomerCode(profileRoot.get());
+        }
+        if (StringUtils.hasText(contactKey)) {
+            List<ClueResponse> contactRows = databaseStore.findCluesByContactKey(contactKey);
+            if (!contactRows.isEmpty()) {
+                return contactRows;
+            }
+        }
+        if (StringUtils.hasText(fallbackRootCustomerCode)) {
+            return databaseStore.findCluesByRootCustomerCode(fallbackRootCustomerCode);
+        }
+        return List.of();
+    }
+
+    private int nextDemandSequence(List<ClueResponse> rows) {
+        return rows.stream()
+                .map(ClueResponse::demandSequence)
+                .filter(value -> value != null && value > 0)
+                .max(Integer::compareTo)
+                .orElse(rows.size()) + 1;
+    }
+
+    private void ensureUniqueContactOnUpdate(String contactInfo, ClueResponse currentClue) {
         String normalizedContact = normalizeContact(contactInfo);
         if (!StringUtils.hasText(normalizedContact)) {
             return;
         }
+        String currentRoot = rootCustomerCode(currentClue);
+        Optional<String> existingRoot = databaseStore.findRootCustomerCodeByContactKey(normalizedContact);
+        if (existingRoot.isPresent() && !existingRoot.get().equals(currentRoot)) {
+            ClueResponse owner = databaseStore.findCluesByRootCustomerCode(existingRoot.get()).stream()
+                    .map(this::normalizeClue)
+                    .findFirst()
+                    .orElse(null);
+            String ownerName = owner == null ? "其他运营" : owner.uploader();
+            throw new BusinessException("\u5f53\u524d\u5ba2\u6237\u5df2\u7ecf\u88ab" + ownerName + "\u8054\u7cfb\u8fc7\uff0c\u8bf7\u4e0d\u8981\u91cd\u590d\u4fdd\u5b58");
+        }
         Optional<ClueResponse> existing = databaseStore.findCluesByContactKey(normalizedContact).stream()
                 .map(this::normalizeClue)
-                .filter(item -> !item.customerCode().equals(currentCustomerCode))
+                .filter(item -> !rootCustomerCode(item).equals(currentRoot))
                 .findFirst();
         if (existing.isPresent()) {
             throw new BusinessException("\u5f53\u524d\u5ba2\u6237\u5df2\u7ecf\u88ab" + existing.get().uploader() + "\u8054\u7cfb\u8fc7\uff0c\u8bf7\u4e0d\u8981\u91cd\u590d\u4fdd\u5b58");

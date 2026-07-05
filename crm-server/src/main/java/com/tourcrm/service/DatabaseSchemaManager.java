@@ -20,6 +20,7 @@ public class DatabaseSchemaManager {
         tightenColumnTypesWhenSafe();
         backfillTypedColumnsSafely();
         addMissingIndexes();
+        backfillCustomerProfiles();
         dropLegacyPayloadColumns();
     }
 
@@ -120,6 +121,28 @@ public class DatabaseSchemaManager {
                 CREATE TABLE IF NOT EXISTS crm_contact_locks (
                   contact_key VARCHAR(255) PRIMARY KEY,
                   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_customer_profiles (
+                  root_customer_code VARCHAR(64) PRIMARY KEY,
+                  primary_contact_key VARCHAR(255) NULL,
+                  contact_info VARCHAR(255) NULL,
+                  created_by_code VARCHAR(32) NULL,
+                  created_at_text VARCHAR(32) NULL,
+                  updated_at_text VARCHAR(32) NULL,
+                  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_crm_customer_profiles_contact (primary_contact_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_customer_contacts (
+                  contact_key VARCHAR(255) PRIMARY KEY,
+                  root_customer_code VARCHAR(64) NOT NULL,
+                  contact_info VARCHAR(255) NULL,
+                  created_at_text VARCHAR(32) NULL,
+                  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_crm_customer_contacts_root (root_customer_code)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
         jdbcTemplate.execute("""
@@ -523,6 +546,48 @@ public class DatabaseSchemaManager {
         dropColumnIfExists("crm_deals", "payload");
         dropColumnIfExists("crm_menus", "payload");
         dropColumnIfExists("crm_system_settings", "payload");
+    }
+
+    private void backfillCustomerProfiles() {
+        jdbcTemplate.execute("""
+                INSERT INTO crm_customer_profiles (
+                  root_customer_code, primary_contact_key, contact_info, created_by_code, created_at_text, updated_at_text
+                )
+                SELECT
+                  CASE
+                    WHEN original_customer_code IS NULL OR original_customer_code = '' THEN customer_code
+                    ELSE original_customer_code
+                  END,
+                  contact_key,
+                  contact_info,
+                  uploader_employee_code,
+                  created_at_text,
+                  updated_at_text
+                FROM crm_clues
+                WHERE status <> 'DELETED'
+                ON DUPLICATE KEY UPDATE
+                  primary_contact_key = COALESCE(crm_customer_profiles.primary_contact_key, VALUES(primary_contact_key)),
+                  contact_info = COALESCE(crm_customer_profiles.contact_info, VALUES(contact_info)),
+                  updated_at_text = GREATEST(COALESCE(crm_customer_profiles.updated_at_text, ''), COALESCE(VALUES(updated_at_text), ''))
+                """);
+        jdbcTemplate.execute("""
+                INSERT IGNORE INTO crm_customer_contacts (
+                  contact_key, root_customer_code, contact_info, created_at_text
+                )
+                SELECT
+                  contact_key,
+                  CASE
+                    WHEN original_customer_code IS NULL OR original_customer_code = '' THEN customer_code
+                    ELSE original_customer_code
+                  END,
+                  contact_info,
+                  created_at_text
+                FROM crm_clues
+                WHERE status <> 'DELETED'
+                  AND contact_key IS NOT NULL
+                  AND contact_key <> ''
+                ORDER BY created_at_value ASC, created_at_text ASC, customer_code ASC
+                """);
     }
 
     private void addColumnIfMissing(String tableName, String columnName, String definition) {
