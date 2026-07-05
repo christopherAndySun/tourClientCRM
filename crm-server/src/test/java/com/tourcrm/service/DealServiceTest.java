@@ -23,16 +23,17 @@ class DealServiceTest {
     private final AuthService authService = mock(AuthService.class);
     private final CustomerClueService customerClueService = mock(CustomerClueService.class);
     private final DatabaseStore databaseStore = mock(DatabaseStore.class);
-    private final DealService service = new DealService(authService, customerClueService, databaseStore);
+    private final DealRepository dealRepository = mock(DealRepository.class);
+    private final DealService service = new DealService(authService, customerClueService, databaseStore, dealRepository);
 
     @Test
     void createDealUsesDatabaseSequenceAndSyncsClueStatus() {
         when(authService.hasMenuPermission(TOKEN, AuthService.MENU_DEALS)).thenReturn(true);
         when(authService.currentUser(TOKEN)).thenReturn(salesUser());
-        when(databaseStore.dealExistsForCustomer("XA0705-01")).thenReturn(false);
+        when(dealRepository.existsForCustomer("XA0705-01")).thenReturn(false);
         when(databaseStore.nextDealDailySequence(any(), eq("TOTAL"))).thenReturn(7);
         when(databaseStore.nextDealDailySequence(any(), eq("USER:SA"))).thenReturn(2);
-        when(databaseStore.insertDeal(any())).thenReturn(true);
+        when(dealRepository.insert(any())).thenReturn(true);
 
         DealResponse created = service.create(saveRequest(), TOKEN);
 
@@ -46,13 +47,13 @@ class DealServiceTest {
     void cancelDealWritesRefundAndSyncsClueStatus() {
         when(authService.hasMenuPermission(TOKEN, AuthService.MENU_DEALS)).thenReturn(true);
         when(authService.currentUser(TOKEN)).thenReturn(salesUser());
-        when(databaseStore.findDealByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
+        when(dealRepository.findByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
 
         boolean result = service.cancel("D0705007", "客户退单", "100", "2026-07-05 12:00", TOKEN);
 
         assertThat(result).isTrue();
         ArgumentCaptor<DealResponse> captor = ArgumentCaptor.forClass(DealResponse.class);
-        verify(databaseStore).writeDeal(captor.capture());
+        verify(dealRepository).write(captor.capture());
         assertThat(captor.getValue().status()).isEqualTo("REFUNDED");
         assertThat(captor.getValue().refundAmount()).isEqualTo("100");
         verify(customerClueService).markRefunded("XA0705-01", "客户退单", "100", "2026-07-05 12:00");
@@ -62,7 +63,7 @@ class DealServiceTest {
     void findByCodeUsesRefundedClueStatusAsSourceOfTruth() {
         when(authService.hasMenuPermission(TOKEN, AuthService.MENU_DEALS)).thenReturn(true);
         when(authService.currentUser(TOKEN)).thenReturn(salesUser());
-        when(databaseStore.findDealByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
+        when(dealRepository.findByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
         when(customerClueService.findByCustomerCodeForSystem("XA0705-01")).thenReturn(Optional.of(clue("REFUNDED")));
 
         Optional<DealResponse> result = service.findByCode("D0705007", TOKEN);
@@ -78,7 +79,7 @@ class DealServiceTest {
     void findByCodeUsesLandedClueStatusAsSourceOfTruth() {
         when(authService.hasMenuPermission(TOKEN, AuthService.MENU_DEALS)).thenReturn(true);
         when(authService.currentUser(TOKEN)).thenReturn(salesUser());
-        when(databaseStore.findDealByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
+        when(dealRepository.findByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
         when(customerClueService.findByCustomerCodeForSystem("XA0705-01")).thenReturn(Optional.of(clue("LANDED")));
 
         Optional<DealResponse> result = service.findByCode("D0705007", TOKEN);

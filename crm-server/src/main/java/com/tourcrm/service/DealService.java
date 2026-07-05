@@ -23,35 +23,38 @@ public class DealService {
     private final AuthService authService;
     private final CustomerClueService customerClueService;
     private final DatabaseStore databaseStore;
+    private final DealRepository dealRepository;
 
     public DealService(
             AuthService authService,
             CustomerClueService customerClueService,
-            DatabaseStore databaseStore
+            DatabaseStore databaseStore,
+            DealRepository dealRepository
     ) {
         this.authService = authService;
         this.customerClueService = customerClueService;
         this.databaseStore = databaseStore;
+        this.dealRepository = dealRepository;
     }
 
     public PageResponse<DealResponse> listPage(String keyword, String dealCode, String customerCode, String customerName, String status, String startDate, String endDate, String salesEmployeeCode, Integer page, Integer pageSize, String token) {
         requireDealPermission(token);
         UserSession currentUser = authService.currentUser(token);
         String scopedSales = "ADMIN".equals(currentUser.role()) ? salesEmployeeCode : currentUser.employeeCode();
-        return databaseStore.queryDealReportPage(keyword, dealCode, customerCode, customerName, normalizeOptionalStatus(status), startDate, endDate, scopedSales, page, pageSize);
+        return dealRepository.queryReportPage(keyword, dealCode, customerCode, customerName, normalizeOptionalStatus(status), startDate, endDate, scopedSales, page, pageSize);
     }
 
     public List<DealResponse> listForExport(String keyword, String dealCode, String customerCode, String customerName, String status, String startDate, String endDate, String salesEmployeeCode, String token) {
         requireDealPermission(token);
         UserSession currentUser = authService.currentUser(token);
         String scopedSales = "ADMIN".equals(currentUser.role()) ? salesEmployeeCode : currentUser.employeeCode();
-        return databaseStore.queryDealReportForExport(keyword, dealCode, customerCode, customerName, normalizeOptionalStatus(status), startDate, endDate, scopedSales, 50000);
+        return dealRepository.queryReportForExport(keyword, dealCode, customerCode, customerName, normalizeOptionalStatus(status), startDate, endDate, scopedSales, 50000);
     }
 
     public Optional<DealResponse> findByCode(String dealCode, String token) {
         requireDealPermission(token);
         UserSession currentUser = authService.currentUser(token);
-        return databaseStore.findDealByCode(dealCode)
+        return dealRepository.findByCode(dealCode)
                 .map(this::normalizeDeal)
                 .map(this::syncWithClueStatus)
                 .filter(item -> canView(item, currentUser));
@@ -62,7 +65,7 @@ public class DealService {
         requireDealPermission(token);
         UserSession currentUser = authService.currentUser(token);
         validate(request);
-        if (databaseStore.dealExistsForCustomer(request.customerCode())) {
+        if (dealRepository.existsForCustomer(request.customerCode())) {
             throw new BusinessException("该客户已登记成交，请不要重复登记");
         }
 
@@ -96,7 +99,7 @@ public class DealService {
                     now,
                     now
             );
-            if (databaseStore.insertDeal(deal)) {
+            if (dealRepository.insert(deal)) {
                 customerClueService.markDealed(deal.customerCode());
                 return deal;
             }
@@ -109,7 +112,7 @@ public class DealService {
         requireDealPermission(token);
         validate(request);
         UserSession currentUser = authService.currentUser(token);
-        Optional<DealResponse> oldOptional = databaseStore.findDealByCode(dealCode).map(this::normalizeDeal);
+        Optional<DealResponse> oldOptional = dealRepository.findByCode(dealCode).map(this::normalizeDeal);
         if (oldOptional.isPresent() && canView(oldOptional.get(), currentUser)) {
             DealResponse old = oldOptional.get();
             DealResponse updated = new DealResponse(
@@ -137,7 +140,7 @@ public class DealService {
                     old.createdAt(),
                     nowText()
             );
-            databaseStore.writeDeal(updated);
+            dealRepository.write(updated);
             return Optional.of(updated);
         }
         return Optional.empty();
@@ -147,7 +150,7 @@ public class DealService {
     public boolean cancel(String dealCode, String remark, String refundAmount, String refundedAt, String token) {
         requireDealPermission(token);
         UserSession currentUser = authService.currentUser(token);
-        Optional<DealResponse> oldOptional = databaseStore.findDealByCode(dealCode).map(this::normalizeDeal);
+        Optional<DealResponse> oldOptional = dealRepository.findByCode(dealCode).map(this::normalizeDeal);
         if (oldOptional.isPresent() && canView(oldOptional.get(), currentUser)) {
             DealResponse old = oldOptional.get();
             if ("REFUNDED".equals(normalizeDealStatus(old.status()))) {
@@ -179,7 +182,7 @@ public class DealService {
                     old.createdAt(),
                     now
             );
-            databaseStore.writeDeal(refunded);
+            dealRepository.write(refunded);
             customerClueService.markRefunded(old.customerCode(), StringUtils.hasText(remark) ? remark : "成交记录退单", refundAmount, refunded.refundedAt());
             return true;
         }
