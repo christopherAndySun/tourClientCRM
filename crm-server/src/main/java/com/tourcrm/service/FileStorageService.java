@@ -104,14 +104,25 @@ public class FileStorageService {
         if (!StringUtils.hasText(url) || !url.startsWith("/uploads/")) {
             return "";
         }
-        Path target = uploadDir.resolve(url.substring("/uploads/".length())).normalize();
-        if (!target.startsWith(uploadDir) || !Files.exists(target)) {
+        byte[] bytes = readStoredFileBytes(url);
+        if (bytes.length == 0) {
             return "";
         }
+        return Base64.getEncoder().encodeToString(bytes);
+    }
+
+    public byte[] readStoredFileBytes(String url) {
+        if (!StringUtils.hasText(url) || !url.startsWith("/uploads/")) {
+            return new byte[0];
+        }
+        Path target = uploadDir.resolve(url.substring("/uploads/".length())).normalize();
+        if (!target.startsWith(uploadDir) || !Files.exists(target)) {
+            return new byte[0];
+        }
         try {
-            return Base64.getEncoder().encodeToString(Files.readAllBytes(target));
+            return Files.readAllBytes(target);
         } catch (IOException error) {
-            return "";
+            return new byte[0];
         }
     }
 

@@ -19,6 +19,7 @@
       <el-form-item label="抖音截图"><el-upload v-model:file-list="form.douyinImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-remove="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload><div class="upload-tip">{{ ocrRecognizing ? '正在识别第一张图片...' : 'OCR 只识别第一张图片一次，没识别到就手动填写联系方式。' }}</div></el-form-item>
       <el-form-item label="微信截图"><el-upload v-model:file-list="form.wechatImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('wechatImages', fileList)" :on-remove="(_, fileList) => syncUploadList('wechatImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload></el-form-item>
       <el-form-item :label="isEdit ? '本次跟进备注' : '备注'"><el-input v-model="form.remark" type="textarea" :rows="4" :placeholder="isEdit ? '填写本次沟通结果，例如：客户要和家人确认，明天下午再回访' : '客户需求、沟通要点等'" /></el-form-item>
+      <section v-if="isEdit && customerProfile.rootCustomerCode" class="status-history customer-profile-card"><h2>统一客户档案</h2><dl><div><dt>主档客资</dt><dd>{{ customerProfile.rootCustomerCode }}</dd></div><div><dt>主联系方式</dt><dd>{{ customerProfile.primaryContactInfo || '待补充' }}</dd></div><div><dt>历史需求</dt><dd>{{ customerProfile.totalDemands }} 次</dd></div></dl></section>
       <section v-if="isEdit && historyDemands.length" class="status-history customer-history"><h2>历史需求</h2><div class="history-demand-list"><article v-for="item in historyDemands" :key="item.customerCode" class="history-demand-item"><button class="history-demand-card" type="button" @click="goHistoryDetail(item)"><div><strong>第 {{ item.demandSequence || 1 }} 次需求 · {{ item.customerCode }}</strong><span>{{ sourcePlatformText(item.sourcePlatform) }} · {{ addMethodText(item.addMethod) }} · 运营：{{ item.uploader || '-' }} · 销售：{{ item.assignedSales || '未分配' }}</span></div><StatusTag :status="item.status" /><small>{{ item.createdAt }}</small></button><div v-if="item.followRecords?.length" class="history-demand-follow-list"><div v-for="record in item.followRecords" :key="`${item.customerCode}-${record.createdAt}-${record.remark}`" class="history-demand-follow"><strong>{{ record.operator }}（{{ record.operatorCode }}）</strong><span>{{ record.createdAt }}</span><p>{{ record.remark }}</p></div></div><el-empty v-else class="history-demand-empty" description="该次需求暂无跟进记录" /></article></div></section>
       <section v-if="isEdit && form.followRecords?.length" class="status-history"><h2>跟踪记录</h2><el-timeline><el-timeline-item v-for="item in form.followRecords" :key="`${item.createdAt}-${item.remark}`" :timestamp="item.createdAt" placement="top"><div class="history-card follow-card"><strong>{{ item.operator }}（{{ item.operatorCode }}）</strong><p>{{ item.remark }}</p></div></el-timeline-item></el-timeline></section>
       <section v-if="isEdit" class="status-history"><h2>状态流转记录</h2><el-timeline v-if="form.statusHistory?.length"><el-timeline-item v-for="item in form.statusHistory" :key="`${item.createdAt}-${item.status}`" :timestamp="item.createdAt" placement="top"><div class="history-card"><strong>{{ item.statusText || statusText(item.status) }}</strong><span>{{ item.operator }}（{{ item.operatorCode }}）</span><p v-if="item.depositAmount">定金：{{ item.depositAmount }}</p><p v-if="item.remark">{{ item.remark }}</p></div></el-timeline-item></el-timeline><el-empty v-else description="暂无流转记录" /></section>
@@ -49,6 +50,7 @@ const ocrRecognizing = ref(false)
 const lastOcrImageKey = ref('')
 const historyLoading = ref(false)
 const historyDemands = ref([])
+const customerProfile = reactive({ rootCustomerCode: '', primaryContactInfo: '', totalDemands: 0 })
 const isEdit = computed(() => Boolean(route.params.customerCode))
 const originalStatus = ref('NEW')
 const originalContactInfo = ref('')
@@ -95,8 +97,14 @@ async function loadHistory() {
   historyLoading.value = true
   try {
     const res = await getClueHistory(form.customerCode)
+    Object.assign(customerProfile, {
+      rootCustomerCode: res.data?.rootCustomerCode || '',
+      primaryContactInfo: res.data?.primaryContactInfo || '',
+      totalDemands: res.data?.totalDemands || 0
+    })
     historyDemands.value = res.data?.demands || []
   } catch (error) {
+    Object.assign(customerProfile, { rootCustomerCode: '', primaryContactInfo: '', totalDemands: 0 })
     historyDemands.value = []
   } finally {
     historyLoading.value = false
@@ -448,6 +456,33 @@ function normalizeStatus(status) { if (status === 'TO_DEAL') return 'FOLLOWING';
   font-size: 18px;
 }
 
+.customer-profile-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.customer-profile-card div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.customer-profile-card dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.customer-profile-card dd {
+  margin: 6px 0 0;
+  color: var(--text-strong);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .history-card {
   display: grid;
   gap: 4px;
@@ -581,6 +616,10 @@ function normalizeStatus(status) { if (status === 'TO_DEAL') return 'FOLLOWING';
   }
 
   .status-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-profile-card dl {
     grid-template-columns: 1fr;
   }
 

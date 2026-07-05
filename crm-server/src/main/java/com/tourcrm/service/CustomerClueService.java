@@ -229,7 +229,12 @@ public class CustomerClueService {
                 .sorted(Comparator.comparing(item -> item.demandSequence() == null ? 1 : item.demandSequence()))
                 .toList();
         String customerKey = StringUtils.hasText(contactKey) ? contactKey : rootCode;
-        return new CustomerHistoryResponse(customerKey, demands.size(), demands);
+        String primaryContactInfo = demands.stream()
+                .map(ClueResponse::contactInfo)
+                .filter(StringUtils::hasText)
+                .findFirst()
+                .orElse(current.contactInfo());
+        return new CustomerHistoryResponse(customerKey, rootCode, primaryContactInfo, demands.size(), demands);
     }
 
     @Transactional

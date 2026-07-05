@@ -73,6 +73,13 @@ export function exportClues(params = {}) {
   })
 }
 
+export function downloadClueWord(customerCode) {
+  return http.get(`/clues/${customerCode}/word`, {
+    responseType: 'blob',
+    timeout: 60000
+  })
+}
+
 export function getClueStats(params = {}) {
   return http.get('/clues/stats', { params })
 }

@@ -197,7 +197,7 @@
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElNotification } from 'element-plus'
-import { getClue } from '../api/clue'
+import { downloadClueWord } from '../api/clue'
 import {
   exportThirdPartyFailures,
   listThirdPartyFailures,
@@ -211,7 +211,6 @@ import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import TextActions from '../components/TextActions.vue'
-import { downloadClueWordFile } from '../utils/clueWord'
 import { downloadBlob, todayFilename } from '../utils/download'
 import {
   isNotificationSoundEnabled,
@@ -402,8 +401,8 @@ async function downloadAndMark(row, { refresh = false, markDownloadedAfter = act
     errorMessage: '下载 Word 失败',
     onError: (error) => recordDownloadFailure(row.customerCode, error.message || '下载 Word 失败'),
     task: async () => {
-      const res = await getClue(row.customerCode)
-      await downloadClueWordFile(res.data)
+      const blob = await downloadClueWord(row.customerCode)
+      downloadBlob(blob, `${row.customerCode}.docx`)
       if (markDownloadedAfter) {
         await markThirdPartyDownloaded(row.customerCode)
       }

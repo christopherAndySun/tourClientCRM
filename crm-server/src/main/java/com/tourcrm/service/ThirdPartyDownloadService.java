@@ -20,12 +20,14 @@ public class ThirdPartyDownloadService {
 
     private final AuthService authService;
     private final DatabaseStore databaseStore;
+    private final ThirdPartyDownloadRepository thirdPartyDownloadRepository;
     private final RealtimeEventService realtimeEventService;
     private final SystemAuditService systemAuditService;
 
-    public ThirdPartyDownloadService(AuthService authService, DatabaseStore databaseStore, RealtimeEventService realtimeEventService, SystemAuditService systemAuditService) {
+    public ThirdPartyDownloadService(AuthService authService, DatabaseStore databaseStore, ThirdPartyDownloadRepository thirdPartyDownloadRepository, RealtimeEventService realtimeEventService, SystemAuditService systemAuditService) {
         this.authService = authService;
         this.databaseStore = databaseStore;
+        this.thirdPartyDownloadRepository = thirdPartyDownloadRepository;
         this.realtimeEventService = realtimeEventService;
         this.systemAuditService = systemAuditService;
     }
@@ -48,7 +50,7 @@ public class ThirdPartyDownloadService {
     ) {
         UserSession user = ensurePermission(token);
         Scope scope = scopeFor(user, token);
-        return databaseStore.queryThirdPartyDownloadPage(scope.visibleUploaderCodes(), scope.visibleSalesCodes(), downloaded, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, page, pageSize);
+        return thirdPartyDownloadRepository.queryPage(scope.visibleUploaderCodes(), scope.visibleSalesCodes(), downloaded, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, page, pageSize);
     }
 
     public boolean markDownloaded(String customerCode, String token) {
@@ -56,7 +58,7 @@ public class ThirdPartyDownloadService {
         String normalizedCode = normalizeCustomerCode(customerCode);
         ensureCanOperate(normalizedCode, user, token);
         String now = LocalDateTime.now().format(DATE_TIME_FORMAT);
-        boolean marked = databaseStore.markThirdPartyDownloaded(
+        boolean marked = thirdPartyDownloadRepository.markDownloaded(
                 normalizedCode,
                 user.name(),
                 user.employeeCode(),
@@ -65,7 +67,7 @@ public class ThirdPartyDownloadService {
         if (!marked) {
             throw new BusinessException("客户线索不存在或已删除");
         }
-        databaseStore.recordThirdPartyDownloadLog(normalizedCode, "DOWNLOAD_SUCCESS", "下载成功", user.name(), user.employeeCode(), "Word 文档已生成并移入已下载列表", now);
+        thirdPartyDownloadRepository.recordLog(normalizedCode, "DOWNLOAD_SUCCESS", "下载成功", user.name(), user.employeeCode(), "Word 文档已生成并移入已下载列表", now);
         systemAuditService.recordUser(user.name(), user.employeeCode(), "WORD_DOWNLOAD", "下载 Word", "CLUE", normalizedCode, "三方下载池下载 Word");
         realtimeEventService.publish(
                 "THIRD_PARTY_CHANGED",
@@ -81,12 +83,12 @@ public class ThirdPartyDownloadService {
         UserSession user = ensurePermission(token);
         String normalizedCode = normalizeCustomerCode(customerCode);
         ensureCanOperate(normalizedCode, user, token);
-        boolean restored = databaseStore.restoreThirdPartyPending(normalizedCode);
+        boolean restored = thirdPartyDownloadRepository.restorePending(normalizedCode);
         if (!restored) {
             throw new BusinessException("该客资不在已下载列表中");
         }
         String now = LocalDateTime.now().format(DATE_TIME_FORMAT);
-        databaseStore.recordThirdPartyDownloadLog(normalizedCode, "RESTORE_PENDING", "放回公共池", user.name(), user.employeeCode(), "从已下载列表放回公共池", now);
+        thirdPartyDownloadRepository.recordLog(normalizedCode, "RESTORE_PENDING", "放回公共池", user.name(), user.employeeCode(), "从已下载列表放回公共池", now);
         systemAuditService.recordUser(user.name(), user.employeeCode(), "THIRD_PARTY_RESTORE", "放回三方公共池", "CLUE", normalizedCode, "从已下载列表放回公共池");
         realtimeEventService.publish(
                 "THIRD_PARTY_CHANGED",
@@ -102,7 +104,7 @@ public class ThirdPartyDownloadService {
         UserSession user = ensurePermission(token);
         String normalizedCode = normalizeCustomerCode(customerCode);
         ensureCanOperate(normalizedCode, user, token);
-        databaseStore.recordThirdPartyDownloadLog(
+        thirdPartyDownloadRepository.recordLog(
                 normalizedCode,
                 "DOWNLOAD_FAILED",
                 "下载失败",
@@ -126,7 +128,7 @@ public class ThirdPartyDownloadService {
     ) {
         UserSession user = ensurePermission(token);
         Scope scope = scopeFor(user, token);
-        return databaseStore.queryThirdPartyFailurePage(scope.visibleUploaderCodes(), scope.visibleSalesCodes(), customerCode, operator, startDate, endDate, page, pageSize);
+        return thirdPartyDownloadRepository.queryFailurePage(scope.visibleUploaderCodes(), scope.visibleSalesCodes(), customerCode, operator, startDate, endDate, page, pageSize);
     }
 
     public List<ThirdPartyDownloadFailureRow> failuresForExport(
@@ -138,7 +140,7 @@ public class ThirdPartyDownloadService {
     ) {
         UserSession user = ensurePermission(token);
         Scope scope = scopeFor(user, token);
-        return databaseStore.queryThirdPartyFailuresForExport(scope.visibleUploaderCodes(), scope.visibleSalesCodes(), customerCode, operator, startDate, endDate, 50000);
+        return thirdPartyDownloadRepository.queryFailuresForExport(scope.visibleUploaderCodes(), scope.visibleSalesCodes(), customerCode, operator, startDate, endDate, 50000);
     }
 
     private UserSession ensurePermission(String token) {

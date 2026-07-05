@@ -212,6 +212,7 @@ const currentLogs = ref([])
 const assignForm = reactive({ salesEmployeeCode: '', remark: '' })
 let unsubscribeRealtime
 let realtimeRefreshTimer
+let fetchRequestId = 0
 
 const dateShortcuts = [
   {
@@ -258,21 +259,26 @@ async function fetchRows({ append = false } = {}) {
       page.current = 1
     }
   }
+  const requestId = ++fetchRequestId
   try {
     const poolRequest = poolType.value === 'MINE'
       ? listMySalesPool(filterParams())
       : listPublicSalesPool(filterParams())
     const [clueRes, userRes] = await Promise.all([poolRequest, listSalesCandidates()])
+    if (requestId !== fetchRequestId) return
     const payload = normalizePage(clueRes.data)
     rows.value = append ? [...rows.value, ...payload.records] : payload.records
     total.value = payload.total
     hasMore.value = payload.hasMore
     users.value = userRes.data || []
   } catch (error) {
+    if (requestId !== fetchRequestId) return
     await showError(error.message || '分配数据加载失败')
   } finally {
-    loading.value = false
-    loadingMore.value = false
+    if (requestId === fetchRequestId) {
+      loading.value = false
+      loadingMore.value = false
+    }
   }
 }
 

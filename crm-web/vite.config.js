@@ -52,9 +52,6 @@ export default defineConfig({
           if (id.includes('node_modules/@element-plus/icons-vue')) {
             return 'vendor-icons'
           }
-          if (id.includes('node_modules/docx') || id.includes('node_modules/jszip')) {
-            return 'vendor-docx'
-          }
           if (id.includes('node_modules/axios')) {
             return 'vendor-axios'
           }

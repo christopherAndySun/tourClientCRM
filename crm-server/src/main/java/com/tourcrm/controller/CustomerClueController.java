@@ -15,6 +15,7 @@ import com.tourcrm.dto.OperationLogReportRow;
 import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.PerformanceExportRow;
 import com.tourcrm.dto.PerformanceRowResponse;
+import com.tourcrm.service.ClueWordService;
 import com.tourcrm.service.CustomerClueService;
 import com.tourcrm.service.SystemAuditService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -41,10 +42,12 @@ public class CustomerClueController {
 
     private final CustomerClueService customerClueService;
     private final SystemAuditService systemAuditService;
+    private final ClueWordService clueWordService;
 
-    public CustomerClueController(CustomerClueService customerClueService, SystemAuditService systemAuditService) {
+    public CustomerClueController(CustomerClueService customerClueService, SystemAuditService systemAuditService, ClueWordService clueWordService) {
         this.customerClueService = customerClueService;
         this.systemAuditService = systemAuditService;
+        this.clueWordService = clueWordService;
     }
 
     @GetMapping
@@ -238,6 +241,20 @@ public class CustomerClueController {
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
         return ApiResponse.ok(customerClueService.customerHistory(customerCode, token));
+    }
+
+    @GetMapping("/{customerCode}/word")
+    public void word(
+            @PathVariable String customerCode,
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletResponse response
+    ) throws IOException {
+        ClueWordService.WordFile wordFile = clueWordService.generate(customerCode, token);
+        String fileName = URLEncoder.encode(wordFile.fileName(), StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        response.setContentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        response.setCharacterEncoding("utf-8");
+        response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + fileName);
+        response.getOutputStream().write(wordFile.bytes());
     }
 
     @PostMapping

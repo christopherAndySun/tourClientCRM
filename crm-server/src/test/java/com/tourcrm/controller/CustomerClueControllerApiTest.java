@@ -8,6 +8,7 @@ import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.UserSession;
 import com.tourcrm.service.AuthService;
 import com.tourcrm.service.AuthTokenSupport;
+import com.tourcrm.service.ClueWordService;
 import com.tourcrm.service.CustomerClueService;
 import com.tourcrm.service.SystemAuditService;
 import jakarta.servlet.http.Cookie;
@@ -23,6 +24,8 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,9 +33,10 @@ class CustomerClueControllerApiTest {
 
     private final CustomerClueService customerClueService = mock(CustomerClueService.class);
     private final SystemAuditService systemAuditService = mock(SystemAuditService.class);
+    private final ClueWordService clueWordService = mock(ClueWordService.class);
     private final AuthService authService = mock(AuthService.class);
     private final MockMvc mockMvc = MockMvcBuilders
-            .standaloneSetup(new CustomerClueController(customerClueService, systemAuditService))
+            .standaloneSetup(new CustomerClueController(customerClueService, systemAuditService, clueWordService))
             .addFilters(new ApiAuthenticationFilter(authService, new ObjectMapper()))
             .build();
 
@@ -62,6 +66,20 @@ class CustomerClueControllerApiTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.records[0].customerCode").value("XA0705-01"));
+    }
+
+    @Test
+    void wordDownloadReturnsDocxWhenAuthenticated() throws Exception {
+        when(authService.currentUser("cookie-token")).thenReturn(user());
+        when(clueWordService.generate("XA0705-01", null))
+                .thenReturn(new ClueWordService.WordFile("XA0705-01.docx", new byte[]{1, 2, 3}));
+
+        mockMvc.perform(get("/api/clues/XA0705-01/word")
+                        .cookie(new Cookie(AuthTokenSupport.COOKIE_NAME, "cookie-token")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename*=UTF-8''XA0705-01.docx"))
+                .andExpect(content().contentTypeCompatibleWith("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                .andExpect(content().bytes(new byte[]{1, 2, 3}));
     }
 
     private UserSession user() {

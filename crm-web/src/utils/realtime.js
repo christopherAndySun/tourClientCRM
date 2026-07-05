@@ -14,6 +14,7 @@ export function subscribeRealtime(listener) {
 }
 
 export function ensureRealtimeConnected() {
+  if (window.__CRM_DISABLE_REALTIME__) return
   if (!isSessionActive() || typeof WebSocket === 'undefined') return
   if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) return
 

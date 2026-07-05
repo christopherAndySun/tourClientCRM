@@ -136,8 +136,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteClue, exportClues, getClue, listClues } from '../api/clue'
-import { downloadClueWordFile } from '../utils/clueWord'
+import { deleteClue, downloadClueWord, exportClues, listClues } from '../api/clue'
 import { downloadBlob, todayFilename } from '../utils/download'
 import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
@@ -266,8 +265,8 @@ async function downloadWord(row) {
       successMessage: 'Word 文档已生成',
       errorMessage: '下载 Word 失败',
       task: async () => {
-        const res = await getClue(row.customerCode)
-        await downloadClueWordFile(res.data)
+        const blob = await downloadClueWord(row.customerCode)
+        downloadBlob(blob, `${row.customerCode}.docx`)
       }
     })
   } finally {
