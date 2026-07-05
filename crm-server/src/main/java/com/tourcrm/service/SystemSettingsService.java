@@ -15,15 +15,18 @@ public class SystemSettingsService {
     private final AuthService authService;
     private final SystemSettingsRepository systemSettingsRepository;
     private final SystemAuditService systemAuditService;
+    private final SecretCryptoService secretCryptoService;
 
     public SystemSettingsService(
             AuthService authService,
             SystemSettingsRepository systemSettingsRepository,
-            SystemAuditService systemAuditService
+            SystemAuditService systemAuditService,
+            SecretCryptoService secretCryptoService
     ) {
         this.authService = authService;
         this.systemSettingsRepository = systemSettingsRepository;
         this.systemAuditService = systemAuditService;
+        this.secretCryptoService = secretCryptoService;
     }
 
     public SystemSettingsRecord get(String token) {
@@ -42,15 +45,16 @@ public class SystemSettingsService {
         if (isMaskedSecret(nextSecret) || nextSecret.isEmpty()) {
             nextSecret = old.ocrAppSecret();
         }
-        SystemSettingsRecord updated = new SystemSettingsRecord(
+        String updatedAt = LocalDateTime.now().format(DATE_TIME_FORMAT);
+        SystemSettingsRecord stored = new SystemSettingsRecord(
                 clean(request.ocrAppCode()),
-                nextSecret,
+                secretCryptoService.encrypt(nextSecret),
                 clean(request.remark()),
-                LocalDateTime.now().format(DATE_TIME_FORMAT)
+                updatedAt
         );
-        write(updated);
+        write(stored);
         systemAuditService.record(token, "SETTINGS_UPDATE", "保存系统设置", "SYSTEM_SETTINGS", "OCR", "更新 OCR 配置");
-        return maskSecret(updated);
+        return maskSecret(new SystemSettingsRecord(clean(request.ocrAppCode()), nextSecret, clean(request.remark()), updatedAt));
     }
 
     private SystemSettingsRecord read() {
@@ -61,7 +65,7 @@ public class SystemSettingsService {
         SystemSettingsRecord settings = databaseSettings.get();
         return new SystemSettingsRecord(
                 clean(settings.ocrAppCode()),
-                clean(settings.ocrAppSecret()),
+                secretCryptoService.decrypt(clean(settings.ocrAppSecret())),
                 clean(settings.remark()),
                 clean(settings.updatedAt())
         );
