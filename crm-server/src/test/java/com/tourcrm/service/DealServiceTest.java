@@ -2,6 +2,7 @@ package com.tourcrm.service;
 
 import com.tourcrm.dto.DealResponse;
 import com.tourcrm.dto.DealSaveRequest;
+import com.tourcrm.dto.ClueResponse;
 import com.tourcrm.dto.UserSession;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -57,6 +58,37 @@ class DealServiceTest {
         verify(customerClueService).markRefunded("XA0705-01", "客户退单", "100", "2026-07-05 12:00");
     }
 
+    @Test
+    void findByCodeUsesRefundedClueStatusAsSourceOfTruth() {
+        when(authService.hasMenuPermission(TOKEN, AuthService.MENU_DEALS)).thenReturn(true);
+        when(authService.currentUser(TOKEN)).thenReturn(salesUser());
+        when(databaseStore.findDealByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
+        when(customerClueService.findByCustomerCodeForSystem("XA0705-01")).thenReturn(Optional.of(clue("REFUNDED")));
+
+        Optional<DealResponse> result = service.findByCode("D0705007", TOKEN);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().status()).isEqualTo("REFUNDED");
+        assertThat(result.get().refundAmount()).isEqualTo("100");
+        assertThat(result.get().refundRemark()).isEqualTo("客户退单");
+        assertThat(result.get().refundedAt()).isEqualTo("2026-07-05 12:00");
+    }
+
+    @Test
+    void findByCodeUsesLandedClueStatusAsSourceOfTruth() {
+        when(authService.hasMenuPermission(TOKEN, AuthService.MENU_DEALS)).thenReturn(true);
+        when(authService.currentUser(TOKEN)).thenReturn(salesUser());
+        when(databaseStore.findDealByCode("D0705007")).thenReturn(Optional.of(deal("DEPOSIT_PAID")));
+        when(customerClueService.findByCustomerCodeForSystem("XA0705-01")).thenReturn(Optional.of(clue("LANDED")));
+
+        Optional<DealResponse> result = service.findByCode("D0705007", TOKEN);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().status()).isEqualTo("LANDED");
+        assertThat(result.get().landingAt()).isEqualTo("2026-07-06 12:00");
+        assertThat(result.get().landingRemark()).isEqualTo("客户已落地");
+    }
+
     private DealSaveRequest saveRequest() {
         return new DealSaveRequest("XA0705-01", "客户A", "500", "1500", "2026-07-05", "2026-07-05", "报价", "2026-08-01", "行程", "2026-07-05");
     }
@@ -84,6 +116,43 @@ class DealServiceTest {
                 "",
                 "",
                 "",
+                "2026-07-05 10:00",
+                "2026-07-05 10:00"
+        );
+    }
+
+    private ClueResponse clue(String status) {
+        return new ClueResponse(
+                "XA0705-01",
+                "DOUYIN",
+                "ACTIVE",
+                "wx123",
+                true,
+                "小白",
+                "XA",
+                "HEADQUARTERS",
+                null,
+                null,
+                status,
+                "备注",
+                List.of(),
+                List.of(),
+                false,
+                "",
+                1,
+                "销售A",
+                "SA",
+                "500",
+                "1500",
+                "REFUNDED".equals(status) ? "客户退单" : "",
+                "REFUNDED".equals(status) ? "100" : "",
+                "REFUNDED".equals(status) ? "2026-07-05 12:00" : "",
+                "LANDED".equals(status) ? "2026-07-06 12:00" : "",
+                "LANDED".equals(status) ? "客户已落地" : "",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
                 "2026-07-05 10:00",
                 "2026-07-05 10:00"
         );
