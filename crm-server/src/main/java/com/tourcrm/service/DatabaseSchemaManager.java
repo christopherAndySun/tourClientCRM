@@ -280,7 +280,7 @@ public class DatabaseSchemaManager {
                 CREATE TABLE IF NOT EXISTS crm_system_settings (
                   id TINYINT PRIMARY KEY,
                   ocr_app_code VARCHAR(255) NULL,
-                  ocr_app_secret VARCHAR(255) NULL,
+                  ocr_app_secret VARCHAR(1024) NULL,
                   remark TEXT NULL,
                   updated_at_text VARCHAR(32) NULL,
                   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -408,7 +408,7 @@ public class DatabaseSchemaManager {
         addColumnIfMissing("crm_menus", "description", "description VARCHAR(255) NULL");
         addColumnIfMissing("crm_menus", "path", "path VARCHAR(255) NULL");
         addColumnIfMissing("crm_system_settings", "ocr_app_code", "ocr_app_code VARCHAR(255) NULL");
-        addColumnIfMissing("crm_system_settings", "ocr_app_secret", "ocr_app_secret VARCHAR(255) NULL");
+        addColumnIfMissing("crm_system_settings", "ocr_app_secret", "ocr_app_secret VARCHAR(1024) NULL");
         addColumnIfMissing("crm_system_settings", "remark", "remark TEXT NULL");
         addColumnIfMissing("crm_system_settings", "updated_at_text", "updated_at_text VARCHAR(32) NULL");
     }
@@ -488,6 +488,7 @@ public class DatabaseSchemaManager {
         if (base64ImageCount == null || base64ImageCount == 0) {
             jdbcTemplate.execute("ALTER TABLE crm_clue_images MODIFY url VARCHAR(1024) NULL");
         }
+        jdbcTemplate.execute("ALTER TABLE crm_system_settings MODIFY ocr_app_secret VARCHAR(1024) NULL");
     }
 
     private void backfillTypedColumnsSafely() {
