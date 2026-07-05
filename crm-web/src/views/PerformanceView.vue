@@ -51,11 +51,11 @@
             </template>
           </el-table-column>
         </el-table>
-        <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" :total="treeRows.length" />
+        <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" :total="performanceTotal" />
       </div>
 
       <div class="mobile-list">
-        <article v-for="row in pagedMobileRows" :key="row.employeeCode" class="performance-card">
+        <article v-for="row in mobileRows" :key="row.employeeCode" class="performance-card">
           <div class="card-head">
             <strong>{{ row.employeeName }}（{{ row.employeeCode }}）</strong>
             <el-tag>{{ roleText(row.role) }}</el-tag>
@@ -73,7 +73,7 @@
             <button class="table-action" type="button" @click="openEmployeeClues(row)">查看数据</button>
           </div>
         </article>
-        <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" compact :total="mobileRows.length" />
+        <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" compact :total="performanceTotal" />
       </div>
     </template>
 
@@ -101,7 +101,7 @@ import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
 import { addMethodText, sourcePlatformText } from '../utils/status'
 import { getStoredUser } from '../utils/session'
-import { showError } from '../utils/feedback'
+import { runAction, showError } from '../utils/feedback'
 
 const EmployeeClueList = defineComponent({
   name: 'EmployeeClueList',
@@ -178,6 +178,7 @@ const exporting = ref(false)
 const detailLoading = ref(false)
 const dateRange = ref(defaultMonthRange())
 const rows = ref([])
+const performanceTotal = ref(0)
 const detailVisible = ref(false)
 const selectedEmployee = ref(null)
 const employeeClues = ref([])
@@ -194,15 +195,19 @@ const detailTitle = computed(() => {
 
 const treeRows = computed(() => buildTreeRows(rows.value))
 const mobileRows = computed(() => flattenTreeRows(treeRows.value))
-const pagedTreeRows = computed(() => paginate(treeRows.value, page.current, page.size))
-const pagedMobileRows = computed(() => paginate(mobileRows.value, page.current, page.size))
+const pagedTreeRows = computed(() => treeRows.value)
 
 async function fetchRows() {
   loading.value = true
   try {
-    const res = await getPerformance(dateParams())
-    rows.value = res.data || []
-    page.current = 1
+    const res = await getPerformance({
+      ...dateParams(),
+      page: page.current,
+      pageSize: page.size
+    })
+    const payload = normalizePerformancePage(res.data)
+    rows.value = payload.records
+    performanceTotal.value = payload.total
   } catch (error) {
     await showError(error.message || '绩效数据加载失败')
   } finally {
@@ -218,21 +223,24 @@ async function refreshPage() {
     }, false)
     return
   }
+  if (page.current !== 1) {
+    page.current = 1
+    return
+  }
   await fetchRows()
 }
 
 async function downloadExcel() {
-  exporting.value = true
-  ElMessage.info('正在导出员工绩效...')
-  try {
+  await runAction({
+    loadingRef: exporting,
+    loadingMessage: '正在导出员工绩效...',
+    successMessage: '员工绩效导出成功',
+    errorMessage: '员工绩效导出失败',
+    task: async () => {
     const blob = await exportPerformance(dateParams())
     downloadBlob(blob, todayFilename('员工绩效'))
-    ElMessage.success('员工绩效导出成功')
-  } catch (error) {
-    await showError(error.message || '员工绩效导出失败')
-  } finally {
-    exporting.value = false
-  }
+    }
+  })
 }
 
 async function openEmployeeClues(row, showDialog = true) {
@@ -298,15 +306,20 @@ function treeSortWeight(row) {
   return 2
 }
 
-function paginate(sourceRows, current, size) {
-  const start = (current - 1) * size
-  return sourceRows.slice(start, start + size)
-}
-
 function dateParams() {
   return {
     startDate: dateRange.value?.[0],
     endDate: dateRange.value?.[1]
+  }
+}
+
+function normalizePerformancePage(data) {
+  if (Array.isArray(data)) {
+    return { records: data, total: data.length }
+  }
+  return {
+    records: data?.records || [],
+    total: Number(data?.total || 0)
   }
 }
 
@@ -339,7 +352,18 @@ function positionText(position) {
 }
 
 watch(() => page.size, () => {
-  page.current = 1
+  if (isEmployeeOnly.value) return
+  if (page.current !== 1) {
+    page.current = 1
+    return
+  }
+  fetchRows()
+})
+
+watch(() => page.current, () => {
+  if (!isEmployeeOnly.value) {
+    fetchRows()
+  }
 })
 
 watch([() => detailPage.current, () => detailPage.size], () => {

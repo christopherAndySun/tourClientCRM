@@ -181,12 +181,14 @@ public class CustomerClueController {
     }
 
     @GetMapping("/performance")
-    public ApiResponse<List<PerformanceRowResponse>> performance(
+    public ApiResponse<PageResponse<PerformanceRowResponse>> performance(
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.performance(startDate, endDate, token));
+        return ApiResponse.ok(customerClueService.performancePage(startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/performance/export")

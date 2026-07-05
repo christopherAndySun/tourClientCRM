@@ -3,6 +3,7 @@ package com.tourcrm.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tourcrm.common.ApiResponse;
 import com.tourcrm.common.BusinessException;
+import com.tourcrm.dto.UserSession;
 import com.tourcrm.service.AuthService;
 import com.tourcrm.service.AuthTokenSupport;
 import jakarta.servlet.FilterChain;
@@ -10,11 +11,15 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @Component
 public class ApiAuthenticationFilter extends OncePerRequestFilter {
@@ -36,9 +41,19 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
         }
 
         try {
-            authService.currentUser(AuthTokenSupport.resolveFromRequest(request));
-            filterChain.doFilter(request, response);
+            UserSession user = authService.currentUser(AuthTokenSupport.resolveFromRequest(request));
+            SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                    user,
+                    null,
+                    List.of(new SimpleGrantedAuthority("ROLE_" + user.role()))
+            ));
+            try {
+                filterChain.doFilter(request, response);
+            } finally {
+                SecurityContextHolder.clearContext();
+            }
         } catch (BusinessException error) {
+            SecurityContextHolder.clearContext();
             writeUnauthorized(response, error.getMessage());
         }
     }

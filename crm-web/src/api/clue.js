@@ -20,6 +20,16 @@ export function updateClue(customerCode, data) {
   return http.put(`/clues/${customerCode}`, data, { timeout: 60000 })
 }
 
+export function uploadClueImage(file, imageType, sortOrder = 0) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('imageType', imageType)
+  formData.append('sortOrder', String(sortOrder))
+  return http.post('/uploads/images', formData, {
+    timeout: 60000
+  })
+}
+
 export function assignClue(customerCode, data) {
   return http.put(`/clues/${customerCode}/assign`, data)
 }

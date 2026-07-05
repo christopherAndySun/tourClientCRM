@@ -19,3 +19,15 @@ export function restoreThirdPartyPending(customerCode) {
 export function recordThirdPartyDownloadFailure(customerCode, message) {
   return http.post(`/third-party-downloads/${customerCode}/record-failure`, { message })
 }
+
+export function listThirdPartyFailures(params = {}) {
+  return http.get('/third-party-downloads/failures', { params })
+}
+
+export function exportThirdPartyFailures(params = {}) {
+  return http.get('/third-party-downloads/failures/export', {
+    params,
+    responseType: 'blob',
+    transformResponse: [(data) => data]
+  })
+}

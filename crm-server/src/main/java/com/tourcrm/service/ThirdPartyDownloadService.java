@@ -3,6 +3,7 @@ package com.tourcrm.service;
 import com.tourcrm.common.BusinessException;
 import com.tourcrm.dto.ClueResponse;
 import com.tourcrm.dto.PageResponse;
+import com.tourcrm.dto.ThirdPartyDownloadFailureRow;
 import com.tourcrm.dto.ThirdPartyDownloadResponse;
 import com.tourcrm.dto.UserRecord;
 import com.tourcrm.dto.UserSession;
@@ -112,6 +113,32 @@ public class ThirdPartyDownloadService {
         );
         systemAuditService.recordUser(user.name(), user.employeeCode(), "WORD_DOWNLOAD_FAILED", "Word 下载失败", "CLUE", normalizedCode, cleanMessage(message));
         return true;
+    }
+
+    public PageResponse<ThirdPartyDownloadFailureRow> failurePage(
+            String customerCode,
+            String operator,
+            String startDate,
+            String endDate,
+            Integer page,
+            Integer pageSize,
+            String token
+    ) {
+        UserSession user = ensurePermission(token);
+        Scope scope = scopeFor(user, token);
+        return databaseStore.queryThirdPartyFailurePage(scope.visibleUploaderCodes(), scope.visibleSalesCodes(), customerCode, operator, startDate, endDate, page, pageSize);
+    }
+
+    public List<ThirdPartyDownloadFailureRow> failuresForExport(
+            String customerCode,
+            String operator,
+            String startDate,
+            String endDate,
+            String token
+    ) {
+        UserSession user = ensurePermission(token);
+        Scope scope = scopeFor(user, token);
+        return databaseStore.queryThirdPartyFailuresForExport(scope.visibleUploaderCodes(), scope.visibleSalesCodes(), customerCode, operator, startDate, endDate, 50000);
     }
 
     private UserSession ensurePermission(String token) {

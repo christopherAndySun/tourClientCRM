@@ -29,6 +29,9 @@ public class OcrController {
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
         authService.currentUser(token);
-        return ApiResponse.ok(ocrService.recognizeWechatId(request.imageBase64()));
+        return ApiResponse.ok(ocrService.recognizeWechatId(
+                request == null ? "" : request.imageBase64(),
+                request == null ? "" : request.imageUrl()
+        ));
     }
 }

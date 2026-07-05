@@ -17,7 +17,7 @@ export function updateDeal(dealCode, data) {
 }
 
 export function cancelDeal(dealCode, data = {}) {
-  return http.delete(`/deals/${dealCode}`, { data })
+  return http.post(`/deals/${dealCode}/cancel`, data)
 }
 
 export function exportDeals(params = {}) {

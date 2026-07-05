@@ -8,6 +8,7 @@ import com.tourcrm.dto.DealResponse;
 import com.tourcrm.dto.DealSaveRequest;
 import com.tourcrm.dto.PageResponse;
 import com.tourcrm.service.DealService;
+import com.tourcrm.service.SystemAuditService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,9 +32,11 @@ import java.util.List;
 public class DealController {
 
     private final DealService dealService;
+    private final SystemAuditService systemAuditService;
 
-    public DealController(DealService dealService) {
+    public DealController(DealService dealService, SystemAuditService systemAuditService) {
         this.dealService = dealService;
+        this.systemAuditService = systemAuditService;
     }
 
     @GetMapping
@@ -74,6 +77,7 @@ public class DealController {
         List<DealExportRow> rows = dealService.listForExport(keyword, dealCode, customerCode, customerName, status, startDate, endDate, salesEmployeeCode, token).stream()
                 .map(DealExportRow::new)
                 .toList();
+        systemAuditService.record(token, "DEAL_EXPORT", "导出成交记录", "DEAL_EXPORT", "", "导出成交记录 " + rows.size() + " 条");
         EasyExcel.write(response.getOutputStream(), DealExportRow.class).sheet("成交记录").doWrite(rows);
     }
 
@@ -108,6 +112,15 @@ public class DealController {
 
     @DeleteMapping("/{dealCode}")
     public ApiResponse<Boolean> cancel(
+            @PathVariable String dealCode,
+            @RequestBody(required = false) DealCancelRequest request,
+            @RequestHeader(value = "Authorization", required = false) String token
+    ) {
+        return cancelDeal(dealCode, request, token);
+    }
+
+    @PostMapping("/{dealCode}/cancel")
+    public ApiResponse<Boolean> cancelDeal(
             @PathVariable String dealCode,
             @RequestBody(required = false) DealCancelRequest request,
             @RequestHeader(value = "Authorization", required = false) String token

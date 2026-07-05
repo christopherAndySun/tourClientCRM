@@ -11,6 +11,7 @@ import com.tourcrm.dto.OperationLogReportRow;
 import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.PerformanceRowResponse;
 import com.tourcrm.dto.StatusChangeRecord;
+import com.tourcrm.dto.ThirdPartyDownloadFailureRow;
 import com.tourcrm.dto.ThirdPartyDownloadResponse;
 import com.tourcrm.dto.UserRecord;
 import org.springframework.dao.DuplicateKeyException;
@@ -40,13 +41,19 @@ public class DatabaseStore {
 
     private final JdbcTemplate jdbcTemplate;
     private final ClueImageRepository clueImageRepository;
+    private final SequenceRepository sequenceRepository;
+    private final CustomerProfileRepository customerProfileRepository;
 
     public DatabaseStore(
             JdbcTemplate jdbcTemplate,
-            ClueImageRepository clueImageRepository
+            ClueImageRepository clueImageRepository,
+            SequenceRepository sequenceRepository,
+            CustomerProfileRepository customerProfileRepository
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.clueImageRepository = clueImageRepository;
+        this.sequenceRepository = sequenceRepository;
+        this.customerProfileRepository = customerProfileRepository;
     }
 
     public List<ClueResponse> findCluesByContactKey(String contactKey) {
@@ -106,18 +113,7 @@ public class DatabaseStore {
     }
 
     public Optional<String> findRootCustomerCodeByContactKey(String contactKey) {
-        if (!StringUtils.hasText(contactKey)) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                    "SELECT root_customer_code FROM crm_customer_contacts WHERE contact_key = ?",
-                    String.class,
-                    contactKey
-            ));
-        } catch (EmptyResultDataAccessException error) {
-            return Optional.empty();
-        }
+        return customerProfileRepository.findRootCustomerCodeByContactKey(contactKey);
     }
 
     public Optional<ClueResponse> findClueByCustomerCodeForUpdate(String customerCode) {
@@ -151,38 +147,16 @@ public class DatabaseStore {
 
     @Transactional
     public int nextClueDailySequence(LocalDate date, String sequenceScope) {
-        String scope = StringUtils.hasText(sequenceScope) ? sequenceScope.trim().toUpperCase(Locale.ROOT) : "HQ";
-        jdbcTemplate.update("""
-                        INSERT INTO crm_clue_daily_sequences (sequence_date, sequence_scope, last_sequence)
-                        VALUES (?, ?, LAST_INSERT_ID(1))
-                        ON DUPLICATE KEY UPDATE last_sequence = LAST_INSERT_ID(last_sequence + 1)
-                        """,
-                java.sql.Date.valueOf(date),
-                scope);
-        Long sequence = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-        return sequence == null ? 1 : sequence.intValue();
+        return sequenceRepository.nextClueDailySequence(date, sequenceScope);
     }
 
     @Transactional
     public int nextDealDailySequence(LocalDate date, String sequenceScope) {
-        String scope = StringUtils.hasText(sequenceScope) ? sequenceScope.trim().toUpperCase(Locale.ROOT) : "TOTAL";
-        jdbcTemplate.update("""
-                        INSERT INTO crm_deal_daily_sequences (sequence_date, sequence_scope, last_sequence)
-                        VALUES (?, ?, LAST_INSERT_ID(1))
-                        ON DUPLICATE KEY UPDATE last_sequence = LAST_INSERT_ID(last_sequence + 1)
-                        """,
-                java.sql.Date.valueOf(date),
-                scope);
-        Long sequence = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
-        return sequence == null ? 1 : sequence.intValue();
+        return sequenceRepository.nextDealDailySequence(date, sequenceScope);
     }
 
     public void acquireContactLock(String contactKey) {
-        if (!StringUtils.hasText(contactKey)) {
-            return;
-        }
-        jdbcTemplate.update("INSERT IGNORE INTO crm_contact_locks (contact_key) VALUES (?)", contactKey);
-        jdbcTemplate.queryForObject("SELECT contact_key FROM crm_contact_locks WHERE contact_key = ? FOR UPDATE", String.class, contactKey);
+        customerProfileRepository.acquireContactLock(contactKey);
     }
 
     public void releaseContactLock(String contactKey) {
@@ -375,6 +349,71 @@ public class DatabaseStore {
                 createdAt,
                 parseDateTime(createdAt)
         );
+    }
+
+    public PageResponse<ThirdPartyDownloadFailureRow> queryThirdPartyFailurePage(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
+            String customerCode,
+            String operator,
+            String startDate,
+            String endDate,
+            Integer page,
+            Integer pageSize
+    ) {
+        List<Object> params = new ArrayList<>();
+        String where = buildThirdPartyFailureWhereSql(visibleUploaderCodes, visibleSalesCodes, customerCode, operator, startDate, endDate, params);
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+        long total = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM crm_third_party_download_logs log
+                JOIN crm_clues clue ON clue.customer_code = log.customer_code
+                WHERE """ + where,
+                Long.class,
+                params.toArray());
+        List<Object> pageParams = new ArrayList<>(params);
+        pageParams.add((safePage - 1) * safePageSize);
+        pageParams.add(safePageSize);
+        List<ThirdPartyDownloadFailureRow> rows = jdbcTemplate.query("""
+                SELECT log.customer_code, clue.contact_info, clue.source_platform, clue.add_method, clue.status,
+                       clue.uploader, clue.uploader_employee_code, clue.assigned_sales, clue.assigned_sales_employee_code,
+                       log.operator, log.operator_code, log.remark, log.created_at_text
+                FROM crm_third_party_download_logs log
+                JOIN crm_clues clue ON clue.customer_code = log.customer_code
+                WHERE """ + where + """
+                ORDER BY log.created_at_value DESC, log.id DESC
+                LIMIT ?, ?
+                """,
+                (rs, rowNum) -> readThirdPartyFailureRow(rs),
+                pageParams.toArray());
+        return new PageResponse<>(rows, total, safePage, safePageSize, (long) safePage * safePageSize < total);
+    }
+
+    public List<ThirdPartyDownloadFailureRow> queryThirdPartyFailuresForExport(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
+            String customerCode,
+            String operator,
+            String startDate,
+            String endDate,
+            int limit
+    ) {
+        List<Object> params = new ArrayList<>();
+        String where = buildThirdPartyFailureWhereSql(visibleUploaderCodes, visibleSalesCodes, customerCode, operator, startDate, endDate, params);
+        params.add(Math.max(1, Math.min(limit, 50000)));
+        return jdbcTemplate.query("""
+                SELECT log.customer_code, clue.contact_info, clue.source_platform, clue.add_method, clue.status,
+                       clue.uploader, clue.uploader_employee_code, clue.assigned_sales, clue.assigned_sales_employee_code,
+                       log.operator, log.operator_code, log.remark, log.created_at_text
+                FROM crm_third_party_download_logs log
+                JOIN crm_clues clue ON clue.customer_code = log.customer_code
+                WHERE """ + where + """
+                ORDER BY log.created_at_value DESC, log.id DESC
+                LIMIT ?
+                """,
+                (rs, rowNum) -> readThirdPartyFailureRow(rs),
+                params.toArray());
     }
 
     public PageResponse<ClueResponse> queryStatsDetailPage(
@@ -934,6 +973,62 @@ public class DatabaseStore {
         return where.toString();
     }
 
+    private String buildThirdPartyFailureWhereSql(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
+            String customerCode,
+            String operator,
+            String startDate,
+            String endDate,
+            List<Object> params
+    ) {
+        StringBuilder where = new StringBuilder("log.action = 'DOWNLOAD_FAILED' AND clue.status <> 'DELETED'");
+        boolean hasUploaderScope = visibleUploaderCodes != null;
+        boolean hasSalesScope = visibleSalesCodes != null;
+        if (hasUploaderScope || hasSalesScope) {
+            where.append(" AND (");
+            boolean appended = false;
+            if (hasUploaderScope) {
+                appendInClause(where, params, "clue.uploader_employee_code", visibleUploaderCodes);
+                appended = true;
+            }
+            if (hasSalesScope) {
+                if (appended) {
+                    where.append(" OR ");
+                }
+                appendInClause(where, params, "clue.assigned_sales_employee_code", visibleSalesCodes);
+            }
+            where.append(")");
+        }
+        appendLike(where, params, "log.customer_code", customerCode);
+        if (StringUtils.hasText(operator)) {
+            where.append(" AND (LOWER(log.operator) LIKE ? OR LOWER(log.operator_code) LIKE ?)");
+            String value = likeValue(operator);
+            params.add(value);
+            params.add(value);
+        }
+        appendDateTimeRange(where, params, "log.created_at_value", startDate, endDate);
+        return where.toString();
+    }
+
+    private ThirdPartyDownloadFailureRow readThirdPartyFailureRow(ResultSet rs) throws SQLException {
+        return new ThirdPartyDownloadFailureRow(
+                rs.getString("customer_code"),
+                rs.getString("contact_info"),
+                rs.getString("source_platform"),
+                rs.getString("add_method"),
+                rs.getString("status"),
+                rs.getString("uploader"),
+                rs.getString("uploader_employee_code"),
+                rs.getString("assigned_sales"),
+                rs.getString("assigned_sales_employee_code"),
+                rs.getString("operator"),
+                rs.getString("operator_code"),
+                rs.getString("remark"),
+                rs.getString("created_at_text")
+        );
+    }
+
     private void appendInClause(StringBuilder where, List<Object> params, String column, List<String> values) {
         if (values == null) {
             return;
@@ -1155,10 +1250,10 @@ public class DatabaseStore {
                               updated_at_value
                             )
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
+            """,
                     clueParams(row));
             replaceClueChildren(row);
-            upsertCustomerProfile(row);
+            customerProfileRepository.upsertCustomerProfile(row);
             return true;
         } catch (DuplicateKeyException error) {
             return false;
@@ -1212,49 +1307,7 @@ public class DatabaseStore {
                               updated_at_value = VALUES(updated_at_value)
                             """,
                 clueParams(row));
-        upsertCustomerProfile(row);
-    }
-
-    private void upsertCustomerProfile(ClueResponse row) {
-        String contactKey = contactKey(row.contactInfo());
-        String rootCustomerCode = rootCustomerCode(row);
-        jdbcTemplate.update("""
-                        INSERT INTO crm_customer_profiles (
-                          root_customer_code, primary_contact_key, contact_info, created_by_code, created_at_text, updated_at_text
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE
-                          primary_contact_key = COALESCE(NULLIF(VALUES(primary_contact_key), ''), primary_contact_key),
-                          contact_info = COALESCE(NULLIF(VALUES(contact_info), ''), contact_info),
-                          updated_at_text = VALUES(updated_at_text)
-                        """,
-                rootCustomerCode,
-                nullIfBlank(contactKey),
-                nullIfBlank(row.contactInfo()),
-                row.uploaderEmployeeCode(),
-                row.createdAt(),
-                row.updatedAt());
-        if (StringUtils.hasText(contactKey)) {
-            jdbcTemplate.update("""
-                            INSERT INTO crm_customer_contacts (contact_key, root_customer_code, contact_info, created_at_text)
-                            VALUES (?, ?, ?, ?)
-                            ON DUPLICATE KEY UPDATE
-                              contact_info = VALUES(contact_info),
-                              root_customer_code = root_customer_code
-                            """,
-                    contactKey,
-                    rootCustomerCode,
-                    row.contactInfo(),
-                    row.createdAt());
-        }
-    }
-
-    private String rootCustomerCode(ClueResponse row) {
-        return StringUtils.hasText(row.originalCustomerCode()) ? row.originalCustomerCode() : row.customerCode();
-    }
-
-    private String nullIfBlank(String value) {
-        return StringUtils.hasText(value) ? value : null;
+        customerProfileRepository.upsertCustomerProfile(row);
     }
 
     private Object[] clueParams(ClueResponse row) {

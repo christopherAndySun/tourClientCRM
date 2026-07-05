@@ -22,6 +22,9 @@
       >
         批量下载
       </el-button>
+      <el-button class="desktop-batch-button" :loading="failureLoading" @click="openFailureQueue">
+        失败队列
+      </el-button>
     </div>
 
     <el-alert
@@ -148,15 +151,56 @@
       </div>
       <el-empty v-if="!loading && !rows.length" :description="activeTab === 'pending' ? '暂无待下载客资' : '暂无已下载记录'" />
     </div>
+
+    <el-dialog v-model="failureVisible" title="下载失败队列" width="min(980px, 94vw)">
+      <FilterPanel :collapsible="false">
+        <el-input v-model="failureFilters.customerCode" class="filter-field" clearable placeholder="客户编号" />
+        <el-input v-model="failureFilters.operator" class="filter-field" clearable placeholder="操作人/编号" />
+        <el-date-picker
+          v-model="failureDateRange"
+          class="date-range filter-field"
+          type="daterange"
+          start-placeholder="失败开始日期"
+          end-placeholder="失败结束日期"
+          value-format="YYYY-MM-DD"
+        />
+        <template #actions>
+          <el-button type="primary" :loading="failureLoading" @click="searchFailures">查询</el-button>
+          <el-button :loading="failureExporting" @click="downloadFailureExcel">导出失败明细</el-button>
+        </template>
+      </FilterPanel>
+      <el-table :data="failureRows" width="100%" v-loading="failureLoading">
+        <el-table-column prop="customerCode" label="客户编号" min-width="130" />
+        <el-table-column label="联系方式" min-width="150">
+          <template #default="{ row }">{{ row.contactInfo || '待补充' }}</template>
+        </el-table-column>
+        <el-table-column prop="operator" label="操作人" min-width="110" />
+        <el-table-column prop="remark" label="失败原因" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="failedAt" label="失败时间" min-width="150" />
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <TextActions>
+              <button class="table-action" type="button" :disabled="downloadingCode === row.customerCode" @click="retryFailure(row)">
+                {{ downloadingCode === row.customerCode ? '重试中' : '重试下载' }}
+              </button>
+              <button class="table-action" type="button" @click="openDetail(row)">详情</button>
+            </TextActions>
+          </template>
+        </el-table-column>
+      </el-table>
+      <AppPagination v-model:current-page="failurePage.current" v-model:page-size="failurePage.size" :total="failureTotal" />
+    </el-dialog>
   </section>
 </template>
 
 <script setup>
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { ElNotification } from 'element-plus'
 import { getClue } from '../api/clue'
 import {
+  exportThirdPartyFailures,
+  listThirdPartyFailures,
   listThirdPartyDownloaded,
   listThirdPartyPending,
   markThirdPartyDownloaded,
@@ -168,6 +212,7 @@ import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import TextActions from '../components/TextActions.vue'
 import { downloadClueWordFile } from '../utils/clueWord'
+import { downloadBlob, todayFilename } from '../utils/download'
 import {
   isNotificationSoundEnabled,
   playNewDataSound,
@@ -176,7 +221,7 @@ import {
 } from '../utils/notificationSound'
 import { subscribeRealtime } from '../utils/realtime'
 import { addMethodText, sourcePlatformText } from '../utils/status'
-import { showError } from '../utils/feedback'
+import { confirmAction, runAction, showError, showSuccess } from '../utils/feedback'
 
 const router = useRouter()
 const activeTab = ref('pending')
@@ -185,6 +230,9 @@ const mobileFilterVisible = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 const batchDownloading = ref(false)
+const failureVisible = ref(false)
+const failureLoading = ref(false)
+const failureExporting = ref(false)
 const downloadingCode = ref('')
 const restoringCode = ref('')
 const rows = ref([])
@@ -192,7 +240,11 @@ const selectedRows = ref([])
 const total = ref(0)
 const hasMore = ref(false)
 const page = reactive({ current: 1, size: 10 })
+const failurePage = reactive({ current: 1, size: 10 })
 const dateRange = ref([])
+const failureDateRange = ref([])
+const failureRows = ref([])
+const failureTotal = ref(0)
 const notificationSoundEnabled = ref(isNotificationSoundEnabled())
 const filters = reactive({
   customerCode: '',
@@ -204,6 +256,7 @@ const filters = reactive({
   assignedSales: '',
   keyword: ''
 })
+const failureFilters = reactive({ customerCode: '', operator: '' })
 let unsubscribeRealtime
 let realtimeRefreshTimer
 
@@ -269,6 +322,63 @@ function searchRows() {
   page.current = 1
 }
 
+async function openFailureQueue() {
+  failureVisible.value = true
+  await fetchFailures()
+}
+
+async function fetchFailures() {
+  failureLoading.value = true
+  try {
+    const res = await listThirdPartyFailures({
+      ...Object.fromEntries(Object.entries(failureFilters).filter(([, value]) => value !== '')),
+      startDate: failureDateRange.value?.[0],
+      endDate: failureDateRange.value?.[1],
+      page: failurePage.current,
+      pageSize: failurePage.size
+    })
+    const payload = normalizePage(res.data)
+    failureRows.value = payload.records
+    failureTotal.value = payload.total
+  } catch (error) {
+    await showError(error.message || '失败队列加载失败')
+  } finally {
+    failureLoading.value = false
+  }
+}
+
+function searchFailures() {
+  if (failurePage.current === 1) {
+    fetchFailures()
+    return
+  }
+  failurePage.current = 1
+}
+
+async function downloadFailureExcel() {
+  await runAction({
+    loadingRef: failureExporting,
+    loadingMessage: '正在导出失败明细...',
+    successMessage: '失败明细已导出',
+    errorMessage: '失败明细导出失败',
+    task: async () => {
+      const blob = await exportThirdPartyFailures({
+        ...Object.fromEntries(Object.entries(failureFilters).filter(([, value]) => value !== '')),
+        startDate: failureDateRange.value?.[0],
+        endDate: failureDateRange.value?.[1]
+      })
+      downloadBlob(blob, todayFilename('三方下载失败明细'))
+    }
+  })
+}
+
+async function retryFailure(row) {
+  const success = await downloadAndMark(row, { refresh: true, markDownloadedAfter: true })
+  if (success) {
+    await fetchFailures()
+  }
+}
+
 function handleTabChange() {
   page.current = 1
   rows.value = []
@@ -284,27 +394,27 @@ async function downloadRow(row) {
   await downloadAndMark(row, { refresh: true })
 }
 
-async function downloadAndMark(row, { refresh = false } = {}) {
+async function downloadAndMark(row, { refresh = false, markDownloadedAfter = activeTab.value === 'pending' } = {}) {
   downloadingCode.value = row.customerCode
-  try {
-    ElMessage.info('正在生成 Word 文档...')
-    const res = await getClue(row.customerCode)
-    await downloadClueWordFile(res.data)
-    if (activeTab.value === 'pending') {
-      await markThirdPartyDownloaded(row.customerCode)
+  const success = await runAction({
+    loadingMessage: '正在生成 Word 文档...',
+    successMessage: activeTab.value === 'pending' ? 'Word 文档已生成，客资已移入已下载列表' : 'Word 文档已生成',
+    errorMessage: '下载 Word 失败',
+    onError: (error) => recordDownloadFailure(row.customerCode, error.message || '下载 Word 失败'),
+    task: async () => {
+      const res = await getClue(row.customerCode)
+      await downloadClueWordFile(res.data)
+      if (markDownloadedAfter) {
+        await markThirdPartyDownloaded(row.customerCode)
+      }
+      return true
     }
-    ElMessage.success(activeTab.value === 'pending' ? 'Word 文档已生成，客资已移入已下载列表' : 'Word 文档已生成')
-    return true
-  } catch (error) {
-    await recordDownloadFailure(row.customerCode, error.message || '下载 Word 失败')
-    await showError(error.message || '下载 Word 失败')
-    return false
-  } finally {
-    downloadingCode.value = ''
-  }
+  })
+  downloadingCode.value = ''
   if (refresh) {
     await fetchRows()
   }
+  return Boolean(success)
 }
 
 async function batchDownload() {
@@ -317,7 +427,7 @@ async function batchDownload() {
         successCount += 1
       }
     }
-    ElMessage.success(`批量下载完成，成功 ${successCount} 条，失败 ${selectedRows.value.length - successCount} 条`)
+    await showSuccess(`批量下载完成，成功 ${successCount} 条，失败 ${selectedRows.value.length - successCount} 条`)
   } finally {
     batchDownloading.value = false
     selectedRows.value = []
@@ -327,23 +437,22 @@ async function batchDownload() {
 
 async function restoreRow(row) {
   try {
-    await ElMessageBox.confirm(`确认将 ${row.customerCode} 放回公共池吗？`, '放回公共池', {
+    await confirmAction(`确认将 ${row.customerCode} 放回公共池吗？`, '放回公共池', {
       confirmButtonText: '确认放回',
-      cancelButtonText: '取消',
       type: 'warning'
     })
   } catch {
     return
   }
   restoringCode.value = row.customerCode
-  try {
-    await restoreThirdPartyPending(row.customerCode)
-    ElMessage.success('已放回公共池')
+  const restored = await runAction({
+    successMessage: '已放回公共池',
+    errorMessage: '放回公共池失败',
+    task: () => restoreThirdPartyPending(row.customerCode)
+  })
+  restoringCode.value = ''
+  if (restored !== undefined) {
     await fetchRows()
-  } catch (error) {
-    await showError(error.message || '放回公共池失败')
-  } finally {
-    restoringCode.value = ''
   }
 }
 
@@ -403,6 +512,12 @@ watch(() => page.size, () => {
 watch(() => page.current, (current, previous) => {
   if (window.matchMedia('(max-width: 760px)').matches) return
   if (current !== previous) fetchRows()
+})
+
+watch([() => failurePage.current, () => failurePage.size], () => {
+  if (failureVisible.value) {
+    fetchFailures()
+  }
 })
 
 function handleMobileScroll() {

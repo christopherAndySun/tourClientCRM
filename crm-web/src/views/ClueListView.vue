@@ -144,7 +144,7 @@ import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import TextActions from '../components/TextActions.vue'
 import { useAuthStore } from '../stores/auth'
-import { showError } from '../utils/feedback'
+import { runAction, showError } from '../utils/feedback'
 import { addMethodText, sourcePlatformText } from '../utils/status'
 
 const router = useRouter()
@@ -234,21 +234,20 @@ function normalizePage(data) {
 }
 
 async function downloadExcel() {
-  exporting.value = true
-  ElMessage.info('正在导出客户线索...')
-  try {
-    const blob = await exportClues({
-      ...filterParams(),
-      startDate: dateRange.value?.[0],
-      endDate: dateRange.value?.[1]
-    })
-    downloadBlob(blob, todayFilename('客户线索'))
-    ElMessage.success('客户线索导出成功')
-  } catch (error) {
-    await showError(error.message || '客户线索导出失败')
-  } finally {
-    exporting.value = false
-  }
+  await runAction({
+    loadingRef: exporting,
+    loadingMessage: '正在导出客户线索...',
+    successMessage: '客户线索导出成功',
+    errorMessage: '客户线索导出失败',
+    task: async () => {
+      const blob = await exportClues({
+        ...filterParams(),
+        startDate: dateRange.value?.[0],
+        endDate: dateRange.value?.[1]
+      })
+      downloadBlob(blob, todayFilename('客户线索'))
+    }
+  })
 }
 
 function filterParams() {
@@ -262,14 +261,19 @@ function editRow(row) {
 async function downloadWord(row) {
   downloadingCode.value = row.customerCode
   try {
-    ElMessage.info('正在生成 Word 文档...')
-    const res = await getClue(row.customerCode)
-    await downloadClueWordFile(res.data)
-    ElMessage.success('Word 文档已生成')
-  } catch (error) {
-    await showError(error.message || '下载 Word 失败')
+    await runAction({
+      loadingMessage: '正在生成 Word 文档...',
+      successMessage: 'Word 文档已生成',
+      errorMessage: '下载 Word 失败',
+      task: async () => {
+        const res = await getClue(row.customerCode)
+        await downloadClueWordFile(res.data)
+      }
+    })
   } finally {
-    downloadingCode.value = ''
+    if (downloadingCode.value === row.customerCode) {
+      downloadingCode.value = ''
+    }
   }
 }
 

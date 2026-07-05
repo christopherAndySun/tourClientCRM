@@ -34,7 +34,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { createClue, getClue, getClueHistory, updateClue } from '../api/clue'
+import { createClue, getClue, getClueHistory, updateClue, uploadClueImage } from '../api/clue'
 import { recognizeWechatId } from '../api/ocr'
 import StatusTag from '../components/StatusTag.vue'
 import { resolveAssetUrl } from '../utils/assets'
@@ -217,10 +217,14 @@ function postCreatePath() {
 }
 
 async function syncUploadList(field, fileList) {
-  const normalized = await Promise.all(fileList.map((file, index) => normalizeUploadFile(file, index)))
-  form[field] = normalized
-  if (field === 'douyinImages') {
-    await recognizeFirstDouyinImage()
+  try {
+    const normalized = await Promise.all(fileList.map((file, index) => normalizeUploadFile(file, index, field)))
+    form[field] = normalized
+    if (field === 'douyinImages') {
+      await recognizeFirstDouyinImage()
+    }
+  } catch (error) {
+    await showError(error.message || '图片上传失败，请重试')
   }
 }
 
@@ -235,7 +239,7 @@ async function recognizeFirstDouyinImage() {
   ocrRecognizing.value = true
   ElMessage.info('正在识别第一张抖音截图...')
   try {
-    const res = await recognizeWechatId(firstImage.url)
+    const res = await recognizeWechatId(firstImage.url, firstImage.storageUrl || '')
     const candidates = res.data?.candidates || []
     if (candidates.length === 1) {
       form.contactInfo = candidates[0]
@@ -289,10 +293,25 @@ async function selectOcrCandidate(candidates) {
 function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]))
 }
-async function normalizeUploadFile(file, index = 0) {
+async function normalizeUploadFile(file, index = 0, field = '') {
   const sortOrder = Number.isFinite(file.sortOrder) ? file.sortOrder : index
   if (file.url?.startsWith('data:')) return { name: file.name, url: file.url, storageUrl: file.storageUrl, uid: file.uid, sortOrder }
-  if (file.raw) return { name: file.name, url: await readImageFile(file.raw), uid: file.uid, sortOrder }
+  if (file.raw) {
+    const [previewUrl, uploadRes] = await Promise.all([
+      readImageFile(file.raw),
+      uploadClueImage(file.raw, field === 'wechatImages' ? 'WECHAT' : 'DOUYIN', sortOrder)
+    ])
+    const uploaded = uploadRes.data || {}
+    return {
+      name: uploaded.name || file.name,
+      url: previewUrl,
+      storageUrl: uploaded.url,
+      uid: uploaded.uid || file.uid,
+      sortOrder,
+      sizeBytes: uploaded.sizeBytes,
+      contentType: uploaded.contentType
+    }
+  }
   return { name: file.name, url: resolveAssetUrl(file.storageUrl || file.url), storageUrl: file.storageUrl || file.url, uid: file.uid, sortOrder }
 }
 function previewImage(file) { preview.name = file.name; preview.url = resolveAssetUrl(file.url); preview.visible = true }

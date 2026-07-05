@@ -171,6 +171,18 @@ public class CustomerClueService {
         );
     }
 
+    public PageResponse<PerformanceRowResponse> performancePage(String startDate, String endDate, Integer page, Integer pageSize, String token) {
+        List<UserRecord> visibleUsers = businessVisibleUsers(token).stream()
+                .sorted(Comparator.comparing(UserRecord::employeeCode))
+                .toList();
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+        int fromIndex = Math.min((safePage - 1) * safePageSize, visibleUsers.size());
+        int toIndex = Math.min(fromIndex + safePageSize, visibleUsers.size());
+        List<PerformanceRowResponse> rows = databaseStore.queryPerformanceRows(visibleUsers.subList(fromIndex, toIndex), startDate, endDate);
+        return new PageResponse<>(rows, visibleUsers.size(), safePage, safePageSize, (long) safePage * safePageSize < visibleUsers.size());
+    }
+
     public EmployeeCluesResponse employeeClues(String employeeCode, String startDate, String endDate, Integer page, Integer pageSize, String token) {
         String normalizedEmployeeCode = normalizeEmployeeCode(employeeCode);
         List<UserRecord> visibleUsers = businessVisibleUsers(token);
@@ -199,15 +211,21 @@ public class CustomerClueService {
     public CustomerHistoryResponse customerHistory(String customerCode, String token) {
         UserSession currentUser = authService.currentUser(token);
         Map<String, UserRecord> usersByCode = userMap(authService.listAllUsersForSystem());
+        List<UserRecord> visibleUsers = authService.usersVisibleTo(token);
         ClueResponse current = findMutableClue(customerCode)
                 .filter(this::notDeleted)
                 .orElseThrow(() -> new BusinessException("客户线索不存在"));
+        if (!canViewInWorkspace(current, currentUser, usersByCode)
+                && !canViewInManagement(current, currentUser, visibleUsers, usersByCode)) {
+            throw new BusinessException("没有查看该客户历史的权限");
+        }
         String contactKey = normalizeContact(current.contactInfo());
         String rootCode = rootCustomerCode(current);
         List<ClueResponse> candidateDemands = findCustomerDemandRows(contactKey, rootCode);
         List<ClueResponse> demands = candidateDemands.stream()
                 .map(this::normalizeClue)
-                .filter(item -> canViewInWorkspace(item, currentUser, usersByCode))
+                .filter(item -> canViewFullCustomerHistory(current, currentUser, visibleUsers, usersByCode)
+                        || canViewInWorkspace(item, currentUser, usersByCode))
                 .sorted(Comparator.comparing(item -> item.demandSequence() == null ? 1 : item.demandSequence()))
                 .toList();
         String customerKey = StringUtils.hasText(contactKey) ? contactKey : rootCode;
@@ -854,6 +872,13 @@ public class CustomerClueService {
             return visibleCodes.contains(item.assignedSalesEmployeeCode());
         }
         return visibleCodes.contains(resolveUploaderCode(item, usersByCode));
+    }
+
+    private boolean canViewFullCustomerHistory(ClueResponse current, UserSession currentUser, List<UserRecord> visibleUsers, Map<String, UserRecord> usersByCode) {
+        if ("ADMIN".equals(currentUser.role())) {
+            return true;
+        }
+        return "SALES".equals(currentUser.position()) && canViewInManagement(current, currentUser, visibleUsers, usersByCode);
     }
 
     private void ensureAssignPermission(String token) {

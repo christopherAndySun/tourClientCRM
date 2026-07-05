@@ -164,7 +164,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { ElNotification } from 'element-plus'
 import { listSalesCandidates } from '../api/auth'
 import { assignClue, claimClue, listMySalesPool, listPublicSalesPool, releaseClue } from '../api/clue'
 import AppPagination from '../components/AppPagination.vue'
@@ -179,7 +179,7 @@ import {
 } from '../utils/notificationSound'
 import { subscribeRealtime } from '../utils/realtime'
 import { addMethodText, sourcePlatformText } from '../utils/status'
-import { showError } from '../utils/feedback'
+import { confirmAction, promptAction, runAction, showError, showSuccess } from '../utils/feedback'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -326,13 +326,15 @@ function canRelease(row) {
 
 async function claimRow(row) {
   try {
-    await ElMessageBox.confirm(`确认领取线索 ${row.customerCode} 吗？领取后将进入你的销售池，其他销售不能再领取。`, '领取确认', {
+    await confirmAction(`确认领取线索 ${row.customerCode} 吗？领取后将进入你的销售池，其他销售不能再领取。`, '领取确认', {
       confirmButtonText: '确认领取',
-      cancelButtonText: '取消',
       type: 'warning'
     })
-    await claimClue(row.customerCode)
-    ElMessage.success('已领取到我的销售池')
+    await runAction({
+      successMessage: '已领取到我的销售池',
+      errorMessage: '领取失败，请刷新后重试',
+      task: () => claimClue(row.customerCode)
+    })
     await fetchRows()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
@@ -359,28 +361,27 @@ async function submitAssign() {
     return
   }
   saving.value = true
-  try {
-    await assignClue(currentRow.value.customerCode, { ...assignForm })
-    ElMessage.success('已分配销售')
+  const saved = await runAction({
+    errorMessage: '分配失败',
+    successMessage: '已分配销售',
+    task: () => assignClue(currentRow.value.customerCode, { ...assignForm })
+  })
+  saving.value = false
+  if (saved !== undefined) {
     assignVisible.value = false
     await fetchRows()
-  } catch (error) {
-    await showError(error.message || '分配失败')
-  } finally {
-    saving.value = false
   }
 }
 
 async function releaseRow(row) {
   try {
-    const { value } = await ElMessageBox.prompt(`确认将客户 ${row.customerCode} 释放回销售公共池吗？释放后其他销售可以重新领取。`, '释放确认', {
+    const { value } = await promptAction(`确认将客户 ${row.customerCode} 释放回销售公共池吗？释放后其他销售可以重新领取。`, '释放确认', {
       confirmButtonText: '确认释放',
-      cancelButtonText: '取消',
       inputType: 'textarea',
       inputPlaceholder: '可填写释放原因'
     })
     await releaseClue(row.customerCode, { remark: value || '释放回公共池' })
-    ElMessage.success('已释放回销售公共池')
+    await showSuccess('已释放回销售公共池')
     await fetchRows()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {

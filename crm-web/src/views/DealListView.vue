@@ -175,7 +175,7 @@ import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import TextActions from '../components/TextActions.vue'
-import { showError } from '../utils/feedback'
+import { runAction, showError } from '../utils/feedback'
 import { statusText } from '../utils/status'
 
 const filters = reactive({ customerCode: '', customerName: '', dealCode: '', status: '', keyword: '' })
@@ -229,17 +229,16 @@ async function fetchSalesUsers() {
 }
 
 async function downloadExcel() {
-  exporting.value = true
-  ElMessage.info('正在导出成交记录...')
-  try {
+  await runAction({
+    loadingRef: exporting,
+    loadingMessage: '正在导出成交记录...',
+    successMessage: '成交记录已导出',
+    errorMessage: '成交记录导出失败',
+    task: async () => {
     const blob = await exportDeals(queryParams())
     downloadBlob(blob, todayFilename('成交记录'))
-    ElMessage.success('成交记录已导出')
-  } catch (error) {
-    await showError(error.message || '成交记录导出失败')
-  } finally {
-    exporting.value = false
-  }
+    }
+  })
 }
 
 function openDetail(row) {

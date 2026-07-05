@@ -30,17 +30,26 @@ public class OcrService {
 
     private final ObjectMapper objectMapper;
     private final SystemSettingsService systemSettingsService;
+    private final FileStorageService fileStorageService;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    public OcrService(ObjectMapper objectMapper, SystemSettingsService systemSettingsService) {
+    public OcrService(ObjectMapper objectMapper, SystemSettingsService systemSettingsService, FileStorageService fileStorageService) {
         this.objectMapper = objectMapper;
         this.systemSettingsService = systemSettingsService;
+        this.fileStorageService = fileStorageService;
     }
 
     public OcrRecognizeResponse recognizeWechatId(String imageBase64) {
+        return recognizeWechatId(imageBase64, "");
+    }
+
+    public OcrRecognizeResponse recognizeWechatId(String imageBase64, String imageUrl) {
         String normalizedImage = normalizeImageBase64(imageBase64);
+        if (!StringUtils.hasText(normalizedImage) && StringUtils.hasText(imageUrl)) {
+            normalizedImage = fileStorageService.readStoredImageAsBase64(imageUrl);
+        }
         if (!StringUtils.hasText(normalizedImage)) {
             throw new BusinessException("请先上传抖音截图第一张图片");
         }

@@ -2,6 +2,7 @@ package com.tourcrm.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tourcrm.common.BusinessException;
+import com.tourcrm.dto.UserSession;
 import com.tourcrm.service.AuthService;
 import com.tourcrm.service.AuthTokenSupport;
 import jakarta.servlet.http.Cookie;
@@ -9,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -49,6 +52,7 @@ class ApiAuthenticationFilterTest {
 
     @Test
     void acceptsApiRequestWithAuthCookie() throws Exception {
+        when(authService.currentUser("cookie-token")).thenReturn(user());
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/clues");
         request.setCookies(new Cookie(AuthTokenSupport.COOKIE_NAME, "cookie-token"));
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -58,5 +62,9 @@ class ApiAuthenticationFilterTest {
 
         assertThat(response.getStatus()).isEqualTo(200);
         verify(authService).currentUser("cookie-token");
+    }
+
+    private UserSession user() {
+        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, List.of("CLUES"));
     }
 }

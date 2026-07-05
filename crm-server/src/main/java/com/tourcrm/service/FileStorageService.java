@@ -4,11 +4,15 @@ import com.tourcrm.dto.ImageFileDto;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.Collection;
+import java.util.Locale;
+import java.util.UUID;
 
 @Service
 public class FileStorageService {
@@ -56,12 +60,58 @@ public class FileStorageService {
         }
     }
 
+    public ImageFileDto storeUploadedImage(MultipartFile file, String imageType, Integer sortOrder) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalStateException("请选择要上传的图片");
+        }
+        if (file.getSize() > MAX_IMAGE_BYTES) {
+            throw new IllegalStateException("图片不能超过 10MB");
+        }
+        String contentType = file.getContentType();
+        if (!StringUtils.hasText(contentType) || !contentType.toLowerCase(Locale.ROOT).startsWith("image/")) {
+            throw new IllegalStateException("只能上传图片文件");
+        }
+        String extension = cleanImageExtension(contentType.substring("image/".length()));
+        String safeType = StringUtils.hasText(imageType) ? imageType.replaceAll("[^A-Za-z0-9_-]", "_").toLowerCase(Locale.ROOT) : "image";
+        String uid = UUID.randomUUID().toString().replace("-", "");
+        String fileName = safeType + "-" + System.currentTimeMillis() + "-" + uid + "." + extension;
+        Path relativeDir = Path.of("clue-images", "pending");
+        Path targetDir = uploadDir.resolve(relativeDir).normalize();
+        Path target = targetDir.resolve(fileName).normalize();
+        if (!target.startsWith(uploadDir)) {
+            throw new IllegalStateException("图片存储路径不合法");
+        }
+        try {
+            Files.createDirectories(targetDir);
+            file.transferTo(target);
+            String url = "/uploads/" + relativeDir.resolve(fileName).toString().replace("\\", "/");
+            return new ImageFileDto(file.getOriginalFilename(), url, uid, sortOrder, file.getSize(), contentType);
+        } catch (IOException error) {
+            throw new IllegalStateException("保存图片文件失败", error);
+        }
+    }
+
     public void deleteStoredFiles(Collection<String> urls) {
         if (urls == null || urls.isEmpty()) {
             return;
         }
         for (String url : urls) {
             deleteStoredFile(url);
+        }
+    }
+
+    public String readStoredImageAsBase64(String url) {
+        if (!StringUtils.hasText(url) || !url.startsWith("/uploads/")) {
+            return "";
+        }
+        Path target = uploadDir.resolve(url.substring("/uploads/".length())).normalize();
+        if (!target.startsWith(uploadDir) || !Files.exists(target)) {
+            return "";
+        }
+        try {
+            return Base64.getEncoder().encodeToString(Files.readAllBytes(target));
+        } catch (IOException error) {
+            return "";
         }
     }
 
