@@ -1,14 +1,15 @@
-const TOKEN_KEY = 'crm_token'
 const USER_KEY = 'crm_user'
-const EXPIRES_KEY = 'crm_token_expires_at'
+const EXPIRES_KEY = 'crm_session_expires_at'
+const LEGACY_TOKEN_KEY = 'crm_token'
+const LEGACY_EXPIRES_KEY = 'crm_token_expires_at'
 const DEFAULT_SESSION_MS = 24 * 60 * 60 * 1000
 
-export function getToken() {
+export function isSessionActive() {
   if (isSessionExpired()) {
     clearSession()
-    return ''
+    return false
   }
-  return localStorage.getItem(TOKEN_KEY) || ''
+  return Boolean(localStorage.getItem(USER_KEY))
 }
 
 export function getStoredUser() {
@@ -19,8 +20,7 @@ export function getStoredUser() {
   return JSON.parse(localStorage.getItem(USER_KEY) || 'null')
 }
 
-export function setSessionStorage(token, user, expiresAt) {
-  localStorage.setItem(TOKEN_KEY, token || '')
+export function setSessionStorage(user, expiresAt) {
   localStorage.setItem(USER_KEY, JSON.stringify(user || null))
   localStorage.setItem(EXPIRES_KEY, resolveExpiresAt(expiresAt))
 }
@@ -30,7 +30,8 @@ export function updateStoredUser(user) {
 }
 
 export function clearSession() {
-  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(LEGACY_TOKEN_KEY)
+  localStorage.removeItem(LEGACY_EXPIRES_KEY)
   localStorage.removeItem(USER_KEY)
   localStorage.removeItem(EXPIRES_KEY)
 }

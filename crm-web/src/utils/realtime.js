@@ -1,4 +1,4 @@
-import { getToken } from './session'
+import { isSessionActive } from './session'
 
 let socket
 let reconnectTimer
@@ -14,12 +14,11 @@ export function subscribeRealtime(listener) {
 }
 
 export function ensureRealtimeConnected() {
-  const token = getToken()
-  if (!token || typeof WebSocket === 'undefined') return
+  if (!isSessionActive() || typeof WebSocket === 'undefined') return
   if (socket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(socket.readyState)) return
 
   clearTimeout(reconnectTimer)
-  socket = new WebSocket(`${websocketBaseUrl()}/ws/realtime?token=${encodeURIComponent(token)}`)
+  socket = new WebSocket(`${websocketBaseUrl()}/ws/realtime`)
   socket.addEventListener('open', () => {
     reconnectAttempts = 0
   })
@@ -39,7 +38,7 @@ export function ensureRealtimeConnected() {
 }
 
 function scheduleReconnect() {
-  if (!listeners.size || !getToken()) return
+  if (!listeners.size || !isSessionActive()) return
   clearTimeout(reconnectTimer)
   const delay = Math.min(30000, 1000 * 2 ** reconnectAttempts)
   reconnectAttempts += 1

@@ -112,8 +112,8 @@ function canView(menu) {
   return isAdmin.value || menu.code === 'STATS' || authStore.user?.menuPermissions?.includes(menu.code) || (menu.code === 'ASSIGN_LOGS' && authStore.user?.menuPermissions?.includes('ASSIGN'))
 }
 
-function logout() {
-  authStore.logout()
+async function logout() {
+  await authStore.logout()
   router.push('/login')
 }
 

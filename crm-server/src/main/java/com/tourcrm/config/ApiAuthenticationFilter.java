@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tourcrm.common.ApiResponse;
 import com.tourcrm.common.BusinessException;
 import com.tourcrm.service.AuthService;
+import com.tourcrm.service.AuthTokenSupport;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,7 +36,7 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
         }
 
         try {
-            authService.currentUser(request.getHeader("Authorization"));
+            authService.currentUser(AuthTokenSupport.resolveFromRequest(request));
             filterChain.doFilter(request, response);
         } catch (BusinessException error) {
             writeUnauthorized(response, error.getMessage());

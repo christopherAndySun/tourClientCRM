@@ -53,6 +53,13 @@ public class LoginSessionRepository {
         jdbcTemplate.update("DELETE FROM crm_login_sessions WHERE employee_code = ?", employeeCode);
     }
 
+    public void deleteSession(String token) {
+        if (!StringUtils.hasText(token)) {
+            return;
+        }
+        jdbcTemplate.update("DELETE FROM crm_login_sessions WHERE token_hash = ?", hashToken(token));
+    }
+
     private String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

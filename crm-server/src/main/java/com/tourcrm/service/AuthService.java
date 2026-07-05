@@ -289,10 +289,36 @@ public class AuthService {
     }
 
     public UserSession currentUser(String token) {
+        String resolvedToken = AuthTokenSupport.resolveFromCurrentRequest(token);
+        if (StringUtils.hasText(resolvedToken)) {
+            return currentUserByRawToken(resolvedToken);
+        }
         if (!StringUtils.hasText(token)) {
             throw new BusinessException("请先登录");
         }
         String rawToken = token.replace("Bearer ", "").trim();
+        Optional<String> employeeCode = loginSessionRepository.findSessionEmployeeCode(rawToken);
+        if (employeeCode.isEmpty()) {
+            throw new BusinessException("登录已过期，请重新登录");
+        }
+        return userRepository.findUserByEmployeeCode(employeeCode.get())
+                .map(this::normalizeUser)
+                .map(this::toSession)
+                .orElseThrow(() -> new BusinessException("当前账号不存在，请重新登录"));
+    }
+
+    public void logout(String token) {
+        String rawToken = AuthTokenSupport.resolveFromCurrentRequest(token);
+        if (StringUtils.hasText(rawToken)) {
+            loginSessionRepository.deleteSession(rawToken);
+        }
+    }
+
+    public long sessionExpirationSeconds() {
+        return tokenExpirationMinutes * 60;
+    }
+
+    private UserSession currentUserByRawToken(String rawToken) {
         Optional<String> employeeCode = loginSessionRepository.findSessionEmployeeCode(rawToken);
         if (employeeCode.isEmpty()) {
             throw new BusinessException("登录已过期，请重新登录");

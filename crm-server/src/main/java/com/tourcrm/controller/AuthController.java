@@ -10,6 +10,11 @@ import com.tourcrm.dto.UserRecord;
 import com.tourcrm.dto.UserSession;
 import com.tourcrm.dto.UserUpdateRequest;
 import com.tourcrm.service.AuthService;
+import com.tourcrm.service.AuthTokenSupport;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.util.List;
 
 @RestController
@@ -34,8 +40,25 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<AuthUserResponse> login(@RequestBody AuthLoginRequest request) {
-        return ApiResponse.ok(authService.login(request));
+    public ApiResponse<AuthUserResponse> login(
+            @RequestBody AuthLoginRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse
+    ) {
+        AuthUserResponse loginUser = authService.login(request);
+        writeAuthCookie(servletRequest, servletResponse, loginUser.token(), authService.sessionExpirationSeconds());
+        return ApiResponse.ok(maskToken(loginUser));
+    }
+
+    @PostMapping("/logout")
+    public ApiResponse<Void> logout(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse
+    ) {
+        authService.logout(token);
+        writeAuthCookie(servletRequest, servletResponse, "", 0);
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/register")
@@ -98,5 +121,32 @@ public class AuthController {
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
         return ApiResponse.ok(authService.deleteUser(employeeCode, token));
+    }
+
+    private void writeAuthCookie(HttpServletRequest request, HttpServletResponse response, String token, long maxAgeSeconds) {
+        ResponseCookie cookie = ResponseCookie.from(AuthTokenSupport.COOKIE_NAME, token == null ? "" : token)
+                .httpOnly(true)
+                .secure(request != null && request.isSecure())
+                .sameSite("Lax")
+                .path("/")
+                .maxAge(Duration.ofSeconds(Math.max(maxAgeSeconds, 0)))
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
+
+    private AuthUserResponse maskToken(AuthUserResponse user) {
+        return new AuthUserResponse(
+                "",
+                user.name(),
+                user.employeeCode(),
+                user.role(),
+                user.position(),
+                user.leaderEmployeeCode(),
+                user.orgType(),
+                user.branchId(),
+                user.branchName(),
+                user.menuPermissions(),
+                user.expiresAt()
+        );
     }
 }

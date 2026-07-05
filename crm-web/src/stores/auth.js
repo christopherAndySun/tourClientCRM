@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
-import { getCurrentUser, login, updateCurrentUser } from '../api/auth'
-import { clearSession, getStoredUser, getToken, setSessionStorage, updateStoredUser } from '../utils/session'
+import { getCurrentUser, login, logout as logoutRequest, updateCurrentUser } from '../api/auth'
+import { clearSession, getStoredUser, isSessionActive, setSessionStorage, updateStoredUser } from '../utils/session'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    token: getToken(),
+    token: isSessionActive() ? 'cookie-session' : '',
     user: getStoredUser()
   }),
   actions: {
@@ -23,7 +23,7 @@ export const useAuthStore = defineStore('auth', {
       updateStoredUser(res.data)
     },
     setSession(data) {
-      this.token = data.token
+      this.token = 'cookie-session'
       this.user = {
         name: data.name,
         employeeCode: data.employeeCode,
@@ -35,9 +35,14 @@ export const useAuthStore = defineStore('auth', {
         branchName: data.branchName,
         menuPermissions: data.menuPermissions || []
       }
-      setSessionStorage(this.token, this.user, data.expiresAt)
+      setSessionStorage(this.user, data.expiresAt)
     },
-    logout() {
+    async logout() {
+      try {
+        await logoutRequest()
+      } catch (error) {
+        // 本地退出不能被网络失败阻塞。
+      }
       this.token = ''
       this.user = null
       clearSession()

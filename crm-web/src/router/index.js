@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { listMenus } from '../api/menu'
 import { FALLBACK_MENUS, mergeMenus } from '../composables/menuConfig'
-import { getStoredUser, getToken } from '../utils/session'
+import { getStoredUser, isSessionActive } from '../utils/session'
 
 const LoginView = () => import('../views/LoginView.vue')
 const DashboardView = () => import('../views/DashboardView.vue')
@@ -57,12 +57,15 @@ let menuCache = null
 let menuCacheAt = 0
 
 router.beforeEach(async (to) => {
-  const token = getToken()
-  if (to.path !== '/login' && !token) {
+  const sessionActive = isSessionActive()
+  if (to.path !== '/login' && !sessionActive) {
     return '/login'
   }
-  if (to.path === '/login' && token) {
+  if (to.path === '/login' && sessionActive) {
     return '/index'
+  }
+  if (to.path === '/login') {
+    return true
   }
   const user = getStoredUser()
   const menus = await ensureMenus()
