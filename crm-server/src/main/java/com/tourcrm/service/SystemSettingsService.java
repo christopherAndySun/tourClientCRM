@@ -63,9 +63,19 @@ public class SystemSettingsService {
             return emptySettings();
         }
         SystemSettingsRecord settings = databaseSettings.get();
+        String rawSecret = clean(settings.ocrAppSecret());
+        String decryptedSecret = secretCryptoService.decrypt(rawSecret);
+        if (!rawSecret.isEmpty() && !secretCryptoService.isEncrypted(rawSecret)) {
+            write(new SystemSettingsRecord(
+                    clean(settings.ocrAppCode()),
+                    secretCryptoService.encrypt(decryptedSecret),
+                    clean(settings.remark()),
+                    clean(settings.updatedAt())
+            ));
+        }
         return new SystemSettingsRecord(
                 clean(settings.ocrAppCode()),
-                secretCryptoService.decrypt(clean(settings.ocrAppSecret())),
+                decryptedSecret,
                 clean(settings.remark()),
                 clean(settings.updatedAt())
         );

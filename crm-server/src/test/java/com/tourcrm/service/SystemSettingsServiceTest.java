@@ -47,4 +47,17 @@ class SystemSettingsServiceTest {
 
         assertThat(result.ocrAppSecret()).isEqualTo("app-secret-123");
     }
+
+    @Test
+    void getForSystemMigratesPlainSecretToEncryptedStorage() {
+        when(repository.readSystemSettings()).thenReturn(Optional.of(new SystemSettingsRecord("app-code", "plain-secret", "备注", "2026-07-05 10:00")));
+
+        SystemSettingsRecord result = service.getForSystem();
+
+        ArgumentCaptor<SystemSettingsRecord> captor = ArgumentCaptor.forClass(SystemSettingsRecord.class);
+        verify(repository).writeSystemSettings(captor.capture());
+        assertThat(result.ocrAppSecret()).isEqualTo("plain-secret");
+        assertThat(captor.getValue().ocrAppSecret()).startsWith("enc:v1:");
+        assertThat(secretCryptoService.decrypt(captor.getValue().ocrAppSecret())).isEqualTo("plain-secret");
+    }
 }
