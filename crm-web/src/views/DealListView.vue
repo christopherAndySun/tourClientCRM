@@ -52,6 +52,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="deposit" label="定金/预付金额" min-width="130" />
+        <el-table-column prop="remainingBalance" label="剩余尾款" min-width="110" />
         <el-table-column prop="refundAmount" label="退单金额" min-width="110" />
         <el-table-column label="销售" min-width="150">
           <template #default="{ row }">{{ userLabel(row.dealUser, row.dealUserCode) }}</template>
@@ -83,7 +84,7 @@
           <StatusTag :status="row.status" />
         </div>
         <p>{{ row.itinerary || '暂无行程' }}</p>
-        <small>{{ userLabel(row.dealUser, row.dealUserCode) }} · 定金：{{ row.deposit || '-' }} · {{ row.dealDate || '-' }}</small>
+        <small>{{ userLabel(row.dealUser, row.dealUserCode) }} · 定金：{{ row.deposit || '-' }} · 尾款：{{ row.remainingBalance || '-' }} · {{ row.dealDate || '-' }}</small>
         <small v-if="row.status === 'REFUNDED'" class="refund-note">退单：{{ row.refundAmount || '-' }} · {{ row.refundRemark || '-' }} · {{ row.refundedAt || '-' }}</small>
         <small v-if="row.status === 'LANDED'">落地：{{ row.landingAt || '-' }} · {{ row.landingRemark || '-' }}</small>
         <TextActions class="card-actions">
@@ -109,6 +110,7 @@
           <div><dt>销售</dt><dd>{{ userLabel(currentDeal.dealUser, currentDeal.dealUserCode) }}</dd></div>
           <div><dt>状态</dt><dd>{{ statusText(currentDeal.status) }}</dd></div>
           <div><dt>定金/预付金额</dt><dd>{{ currentDeal.deposit || '-' }}</dd></div>
+          <div><dt>剩余尾款</dt><dd>{{ currentDeal.remainingBalance || '-' }}</dd></div>
           <div><dt>成交日期</dt><dd>{{ currentDeal.dealDate || '-' }}</dd></div>
           <div><dt>预定时间</dt><dd>{{ currentDeal.bookingDate || '-' }}</dd></div>
           <div><dt>加粉时间</dt><dd>{{ currentDeal.addWechatDate || '-' }}</dd></div>
@@ -147,6 +149,7 @@
       <el-form label-position="top">
         <el-form-item label="客户姓名"><el-input v-model="editForm.customerName" /></el-form-item>
         <el-form-item label="定金/预付金额"><el-input v-model="editForm.deposit" /></el-form-item>
+        <el-form-item label="剩余尾款"><el-input v-model="editForm.remainingBalance" /></el-form-item>
         <el-form-item label="预定时间"><el-date-picker v-model="editForm.bookingDate" class="full-field" type="date" value-format="YYYY-MM-DD" /></el-form-item>
         <el-form-item label="加粉时间"><el-date-picker v-model="editForm.addWechatDate" class="full-field" type="date" value-format="YYYY-MM-DD" /></el-form-item>
         <el-form-item label="报价"><el-input v-model="editForm.quoteText" /></el-form-item>
@@ -193,7 +196,7 @@ const detailVisible = ref(false)
 const editVisible = ref(false)
 const currentDeal = ref(null)
 const cancelForm = reactive({ remark: '', refundAmount: '', refundedAt: '' })
-const editForm = reactive({ dealCode: '', customerCode: '', customerName: '', deposit: '', bookingDate: '', addWechatDate: '', quoteText: '', travelDate: '', itinerary: '', dealDate: '' })
+const editForm = reactive({ dealCode: '', customerCode: '', customerName: '', deposit: '', remainingBalance: '', bookingDate: '', addWechatDate: '', quoteText: '', travelDate: '', itinerary: '', dealDate: '' })
 
 async function fetchRows() {
   loading.value = true
@@ -226,13 +229,13 @@ async function fetchSalesUsers() {
 
 async function downloadExcel() {
   exporting.value = true
-  ElMessage.info('????????????...')
+  ElMessage.info('正在导出成交记录...')
   try {
     const blob = await exportDeals(queryParams())
-    downloadBlob(blob, todayFilename('????'))
-    ElMessage.success('?????????')
+    downloadBlob(blob, todayFilename('成交记录'))
+    ElMessage.success('成交记录已导出')
   } catch (error) {
-    await showError(error.message || '??????????????')
+    await showError(error.message || '成交记录导出失败')
   } finally {
     exporting.value = false
   }

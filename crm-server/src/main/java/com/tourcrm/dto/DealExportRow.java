@@ -7,6 +7,7 @@ public class DealExportRow {
     @ExcelProperty("客户编号") private final String customerCode;
     @ExcelProperty("客户姓名") private final String customerName;
     @ExcelProperty("定金/预付金") private final String deposit;
+    @ExcelProperty("剩余尾款") private final String remainingBalance;
     @ExcelProperty("预定时间") private final String bookingDate;
     @ExcelProperty("加粉时间") private final String addWechatDate;
     @ExcelProperty("报价") private final String quoteText;
@@ -30,6 +31,7 @@ public class DealExportRow {
         this.customerCode = deal.customerCode();
         this.customerName = deal.customerName();
         this.deposit = deal.deposit();
+        this.remainingBalance = deal.remainingBalance();
         this.bookingDate = deal.bookingDate();
         this.addWechatDate = deal.addWechatDate();
         this.quoteText = deal.quoteText();
@@ -52,6 +54,7 @@ public class DealExportRow {
     public String getCustomerCode() { return customerCode; }
     public String getCustomerName() { return customerName; }
     public String getDeposit() { return deposit; }
+    public String getRemainingBalance() { return remainingBalance; }
     public String getBookingDate() { return bookingDate; }
     public String getAddWechatDate() { return addWechatDate; }
     public String getQuoteText() { return quoteText; }

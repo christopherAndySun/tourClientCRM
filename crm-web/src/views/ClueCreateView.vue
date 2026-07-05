@@ -8,24 +8,24 @@
       <el-alert v-if="!isEdit" title="客户编号由系统自动生成。老客户新出行需求确认后，会作为本次运营的客资保存。" type="info" show-icon :closable="false" />
       <el-form-item v-if="isEdit" label="客户编号"><el-input v-model="form.customerCode" disabled /></el-form-item>
       <el-form-item label="来源平台"><el-select v-model="form.sourcePlatform" class="full-field"><el-option label="抖音" value="DOUYIN" /><el-option label="小红书" value="XIAOHONGSHU" /></el-select></el-form-item>
-      <el-form-item label="当前状态"><el-select v-model="form.status" class="full-field"><el-option label="新录入" value="NEW" /><el-option label="跟进中" value="FOLLOWING" /><el-option label="无效用户" value="INVALID" /><el-option label="已交定金" value="DEPOSIT_PAID" /><el-option label="退单" value="REFUNDED" /><el-option label="已落地" value="LANDED" /></el-select></el-form-item>
-      <div v-if="['DEPOSIT_PAID', 'REFUNDED', 'LANDED'].includes(form.status)" class="status-fields"><el-form-item label="定金金额"><el-input v-model="form.depositAmount" placeholder="例如：200" /></el-form-item><el-form-item label="状态备注"><el-input v-model="form.statusRemark" type="textarea" :rows="3" placeholder="例如：客户已付定金，待销售确认行程" /></el-form-item></div>
-      <div v-if="form.status === 'REFUNDED'" class="status-fields"><el-form-item label="退单金额"><el-input v-model="form.refundAmount" placeholder="例如：200" /></el-form-item><el-form-item label="退款时间"><el-date-picker v-model="form.refundedAt" class="full-field" type="datetime" value-format="YYYY-MM-DD HH:mm" placeholder="请选择退款时间" /></el-form-item></div>
-      <div v-if="form.status === 'LANDED'" class="status-fields"><el-form-item label="落地时间"><el-date-picker v-model="form.landingAt" class="full-field" type="datetime" value-format="YYYY-MM-DD HH:mm" placeholder="请选择落地时间" /></el-form-item><el-form-item label="落地备注"><el-input v-model="form.landingRemark" type="textarea" :rows="3" placeholder="例如：客户已完成出行，反馈满意" /></el-form-item></div>
+      <el-form-item label="添加方式"><el-radio-group v-model="form.addMethod"><el-radio-button value="ACTIVE">主动</el-radio-button><el-radio-button value="PASSIVE">被动</el-radio-button><el-radio-button value="GUIDE">领队</el-radio-button></el-radio-group><div class="upload-tip">主动/被动：中转微信聊完后分享领队名片；领队：运营拿到联系方式后直接发给领队添加，进入公共池。</div></el-form-item>
+      <el-form-item label="当前状态"><el-select v-model="form.status" class="full-field"><el-option label="新录入" value="NEW" /><el-option label="跟进中" value="FOLLOWING" /><el-option label="已通过" value="PASSED" /><el-option label="无效用户" value="INVALID" /><el-option label="已交定金" value="DEPOSIT_PAID" /><el-option label="退单" value="REFUNDED" /><el-option label="已落地" value="LANDED" /></el-select></el-form-item>
+      <div v-if="form.status === 'DEPOSIT_PAID'" class="status-fields"><el-form-item label="定金金额"><el-input v-model="form.depositAmount" placeholder="例如：200" /></el-form-item><el-form-item label="剩余尾款"><el-input v-model="form.remainingBalance" placeholder="例如：1080" /></el-form-item><el-form-item class="status-wide" label="状态备注"><el-input v-model="form.statusRemark" type="textarea" :rows="3" placeholder="例如：客户已付定金，待确认尾款和行程" /></el-form-item></div>
+      <div v-if="form.status === 'REFUNDED'" class="status-fields"><el-form-item label="退单金额"><el-input v-model="form.refundAmount" placeholder="例如：200" /></el-form-item><el-form-item class="status-wide" label="退单备注"><el-input v-model="form.statusRemark" type="textarea" :rows="3" placeholder="例如：客户取消行程，定金已退" /></el-form-item></div>
+      <div v-if="form.status === 'LANDED'" class="status-fields"><el-form-item label="落地时间"><el-date-picker v-model="form.landingAt" class="full-field" type="datetime" value-format="YYYY-MM-DD HH:mm" placeholder="请选择落地时间" /></el-form-item><el-form-item class="status-wide" label="落地备注"><el-input v-model="form.landingRemark" type="textarea" :rows="3" placeholder="例如：客户已完成出行，反馈满意" /></el-form-item></div>
       <el-form-item v-if="isEdit && form.assignedSales" label="分配销售"><el-input :model-value="`${form.assignedSales}（${form.assignedSalesEmployeeCode || '-'}）`" disabled /></el-form-item>
       <el-form-item label="客户联系方式"><el-input v-model="form.contactInfo" placeholder="非必填，客户加微信或提供手机号后再补充" /></el-form-item>
       <el-form-item label="是否有微信号"><el-radio-group v-model="form.hasWechatId"><el-radio-button :value="true">有</el-radio-button><el-radio-button :value="false">无</el-radio-button></el-radio-group></el-form-item>
       <el-form-item label="抖音截图"><el-upload v-model:file-list="form.douyinImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-remove="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload><div class="upload-tip">{{ ocrRecognizing ? '正在识别第一张图片...' : '后续 OCR 只识别第一张图片，请把包含微信号或手机号的截图放在第一张。' }}</div></el-form-item>
       <el-form-item label="微信截图"><el-upload v-model:file-list="form.wechatImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('wechatImages', fileList)" :on-remove="(_, fileList) => syncUploadList('wechatImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload></el-form-item>
       <el-form-item :label="isEdit ? '本次跟进备注' : '备注'"><el-input v-model="form.remark" type="textarea" :rows="4" :placeholder="isEdit ? '填写本次沟通结果，例如：客户要和家人确认，明天下午再回访' : '客户需求、沟通要点等'" /></el-form-item>
-      <section v-if="isEdit && historyDemands.length" class="status-history customer-history"><h2>历史需求</h2><div class="history-demand-list"><button v-for="item in historyDemands" :key="item.customerCode" class="history-demand-card" type="button" @click="goHistoryDetail(item)"><div><strong>第 {{ item.demandSequence || 1 }} 次需求 · {{ item.customerCode }}</strong><span>{{ sourcePlatformText(item.sourcePlatform) }} · 运营：{{ item.uploader || '-' }} · 销售：{{ item.assignedSales || '未分配' }}</span></div><StatusTag :status="item.status" /><small>{{ item.createdAt }}</small></button></div></section>
+      <section v-if="isEdit && historyDemands.length" class="status-history customer-history"><h2>历史需求</h2><div class="history-demand-list"><article v-for="item in historyDemands" :key="item.customerCode" class="history-demand-item"><button class="history-demand-card" type="button" @click="goHistoryDetail(item)"><div><strong>第 {{ item.demandSequence || 1 }} 次需求 · {{ item.customerCode }}</strong><span>{{ sourcePlatformText(item.sourcePlatform) }} · {{ addMethodText(item.addMethod) }} · 运营：{{ item.uploader || '-' }} · 销售：{{ item.assignedSales || '未分配' }}</span></div><StatusTag :status="item.status" /><small>{{ item.createdAt }}</small></button><div v-if="item.followRecords?.length" class="history-demand-follow-list"><div v-for="record in item.followRecords" :key="`${item.customerCode}-${record.createdAt}-${record.remark}`" class="history-demand-follow"><strong>{{ record.operator }}（{{ record.operatorCode }}）</strong><span>{{ record.createdAt }}</span><p>{{ record.remark }}</p></div></div><el-empty v-else class="history-demand-empty" description="该次需求暂无跟进记录" /></article></div></section>
       <section v-if="isEdit && form.followRecords?.length" class="status-history"><h2>跟踪记录</h2><el-timeline><el-timeline-item v-for="item in form.followRecords" :key="`${item.createdAt}-${item.remark}`" :timestamp="item.createdAt" placement="top"><div class="history-card follow-card"><strong>{{ item.operator }}（{{ item.operatorCode }}）</strong><p>{{ item.remark }}</p></div></el-timeline-item></el-timeline></section>
       <section v-if="isEdit" class="status-history"><h2>状态流转记录</h2><el-timeline v-if="form.statusHistory?.length"><el-timeline-item v-for="item in form.statusHistory" :key="`${item.createdAt}-${item.status}`" :timestamp="item.createdAt" placement="top"><div class="history-card"><strong>{{ item.statusText || statusText(item.status) }}</strong><span>{{ item.operator }}（{{ item.operatorCode }}）</span><p v-if="item.depositAmount">定金：{{ item.depositAmount }}</p><p v-if="item.remark">{{ item.remark }}</p></div></el-timeline-item></el-timeline><el-empty v-else description="暂无流转记录" /></section>
       <section v-if="isEdit && form.operationLogs?.length" class="status-history operation-history"><h2>操作日志</h2><el-timeline><el-timeline-item v-for="item in reversedOperationLogs" :key="`${item.createdAt}-${item.field}-${item.oldValue}-${item.newValue}`" :timestamp="item.createdAt" placement="top"><div class="history-card operation-card"><strong>{{ item.actionText || item.action }}：{{ item.fieldText || item.field }}</strong><span>{{ item.operator }}（{{ item.operatorCode }}）</span><p><b>修改前：</b>{{ item.oldValue || '-' }}</p><p><b>修改后：</b>{{ item.newValue || '-' }}</p></div></el-timeline-item></el-timeline></section>
-      <div class="form-actions"><el-button @click="$router.back()">返回</el-button><el-button v-if="isEdit" type="success" plain @click="openDealDialog">登记定金</el-button><el-button type="primary" :loading="submitting" @click="submit()">{{ isEdit ? '保存修改' : '提交入库' }}</el-button></div>
+      <div class="form-actions"><el-button @click="$router.back()">返回</el-button><el-button type="primary" :loading="submitting" @click="submit()">{{ isEdit ? '保存设置' : '提交入库' }}</el-button></div>
     </el-form>
     <el-dialog v-model="preview.visible" :title="preview.name" width="min(760px, 92vw)"><img class="preview-dialog-image" :src="preview.url" :alt="preview.name" /></el-dialog>
-    <el-dialog v-model="dealDialogVisible" title="登记定金" width="min(640px, 92vw)"><el-form label-position="top"><el-form-item label="客户姓名"><el-input v-model="dealForm.customerName" placeholder="请输入客户姓名" /></el-form-item><el-form-item label="定金/预付金"><el-input v-model="dealForm.deposit" placeholder="例如：200" /></el-form-item><el-form-item label="预定时间"><el-date-picker v-model="dealForm.bookingDate" class="full-field" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="加粉时间"><el-date-picker v-model="dealForm.addWechatDate" class="full-field" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="报价"><el-input v-model="dealForm.quoteText" placeholder="例如：1280/位，4大1小" /></el-form-item><el-form-item label="出行时间"><el-input v-model="dealForm.travelDate" placeholder="例如：预计 7 月中旬" /></el-form-item><el-form-item label="行程"><el-input v-model="dealForm.itinerary" type="textarea" :rows="3" placeholder="例如：青岛 5 日游" /></el-form-item><el-form-item label="成交日期"><el-date-picker v-model="dealForm.dealDate" class="full-field" type="date" value-format="YYYY-MM-DD" /></el-form-item></el-form><template #footer><el-button @click="dealDialogVisible = false">取消</el-button><el-button type="success" :loading="dealSubmitting" @click="submitDeal">确认登记</el-button></template></el-dialog>
   </section>
 </template>
 
@@ -35,31 +35,29 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { createClue, getClue, getClueHistory, updateClue } from '../api/clue'
-import { createDeal } from '../api/deal'
 import { recognizeWechatId } from '../api/ocr'
 import StatusTag from '../components/StatusTag.vue'
+import { resolveAssetUrl } from '../utils/assets'
 import { getStoredUser } from '../utils/session'
-import { sourcePlatformText, statusText } from '../utils/status'
+import { addMethodText, sourcePlatformText, statusText } from '../utils/status'
 
 const route = useRoute()
 const router = useRouter()
 const submitting = ref(false)
-const dealSubmitting = ref(false)
 const ocrRecognizing = ref(false)
 const lastOcrImageKey = ref('')
-const dealDialogVisible = ref(false)
 const historyLoading = ref(false)
 const historyDemands = ref([])
 const isEdit = computed(() => Boolean(route.params.customerCode))
+const originalStatus = ref('NEW')
 const reversedOperationLogs = computed(() => [...(form.operationLogs || [])].reverse())
 
 const form = reactive({
-  customerCode: '', sourcePlatform: 'DOUYIN', contactInfo: '', hasWechatId: true, status: 'NEW', douyinImages: [], wechatImages: [], remark: '', repeatDemand: false,
-  assignedSales: '', assignedSalesEmployeeCode: '', depositAmount: '', statusRemark: '', refundAmount: '', refundedAt: '', landingAt: '', landingRemark: '',
+  customerCode: '', sourcePlatform: 'DOUYIN', addMethod: 'ACTIVE', contactInfo: '', hasWechatId: true, status: 'NEW', douyinImages: [], wechatImages: [], remark: '', repeatDemand: false,
+  assignedSales: '', assignedSalesEmployeeCode: '', depositAmount: '', remainingBalance: '', statusRemark: '', refundAmount: '', refundedAt: '', landingAt: '', landingRemark: '',
   statusHistory: [], followRecords: [], assignLogs: [], operationLogs: []
 })
 const preview = reactive({ visible: false, name: '', url: '' })
-const dealForm = reactive({ customerName: '', deposit: '', bookingDate: '', addWechatDate: '', quoteText: '', travelDate: '', itinerary: '', dealDate: formatDate(new Date()) })
 
 onMounted(loadDetail)
 
@@ -71,10 +69,13 @@ async function loadDetail() {
     router.push('/clues')
     return
   }
+  const loadedStatus = normalizeStatus(res.data.status)
+  originalStatus.value = loadedStatus
   Object.assign(form, {
     ...res.data,
+    addMethod: res.data.addMethod || 'ACTIVE',
     hasWechatId: res.data.hasWechatId !== false,
-    status: normalizeStatus(res.data.status),
+    status: loadedStatus,
     douyinImages: normalizeSavedImages(res.data.douyinImages),
     wechatImages: normalizeSavedImages(res.data.wechatImages),
     statusHistory: res.data.statusHistory || [],
@@ -108,6 +109,11 @@ async function submit(allowRepeatDemand = false) {
   submitting.value = true
   const hasImages = form.douyinImages.length || form.wechatImages.length
   if (hasImages) ElMessage.info('正在上传图片并保存客户线索，请不要关闭页面...')
+  const statusValid = await validateStatusFields()
+  if (!statusValid) {
+    submitting.value = false
+    return
+  }
   try {
     const payload = buildPayload(allowRepeatDemand)
     if (isEdit.value) {
@@ -115,6 +121,7 @@ async function submit(allowRepeatDemand = false) {
       if (!res?.data?.customerCode) throw new Error('保存成功但未返回客户详情，请刷新后重试')
       Object.assign(form, {
         ...res.data,
+        addMethod: res.data?.addMethod || 'ACTIVE',
         hasWechatId: res.data?.hasWechatId !== false,
         status: normalizeStatus(res.data?.status),
         douyinImages: normalizeSavedImages(res.data?.douyinImages || []),
@@ -150,34 +157,41 @@ function buildPayload(allowRepeatDemand = false) {
   return { ...form, contactInfo: form.contactInfo.trim(), allowRepeatDemand, douyinImages: compactImages(form.douyinImages), wechatImages: compactImages(form.wechatImages) }
 }
 
+async function validateStatusFields() {
+  if ((form.status === 'REFUNDED' || form.status === 'LANDED') && !hasDepositFlow()) {
+    await showError(`该订单没交定金，不能直接${statusText(form.status)}`)
+    return false
+  }
+  if (form.status === 'DEPOSIT_PAID' && !String(form.depositAmount || '').trim()) {
+    await showError('当前状态为已交定金时，请填写定金金额')
+    return false
+  }
+  if (form.status === 'REFUNDED' && !String(form.refundAmount || '').trim()) {
+    await showError('当前状态为退单时，请填写退单金额')
+    return false
+  }
+  if (form.status === 'REFUNDED' && !String(form.statusRemark || '').trim()) {
+    await showError('当前状态为退单时，请填写退单备注')
+    return false
+  }
+  if (form.status === 'LANDED' && !String(form.landingAt || '').trim()) {
+    await showError('当前状态为已落地时，请填写落地时间')
+    return false
+  }
+  return true
+}
+
+function hasDepositFlow() {
+  if (['DEPOSIT_PAID', 'REFUNDED', 'LANDED'].includes(originalStatus.value)) return true
+  if (String(form.depositAmount || '').trim() && originalStatus.value === 'DEPOSIT_PAID') return true
+  return (form.statusHistory || []).some((item) => normalizeStatus(item?.status) === 'DEPOSIT_PAID' || String(item?.depositAmount || '').trim())
+}
+
 function postCreatePath() {
   const user = getStoredUser()
   if (user?.role === 'ADMIN' || user?.menuPermissions?.includes('CLUES')) return '/clues'
   if (user?.menuPermissions?.includes('ASSIGN')) return '/assign'
   return '/index'
-}
-
-function openDealDialog() {
-  Object.assign(dealForm, { customerName: '', deposit: form.depositAmount || '', bookingDate: '', addWechatDate: '', quoteText: '', travelDate: '', itinerary: '', dealDate: formatDate(new Date()) })
-  dealDialogVisible.value = true
-}
-
-async function submitDeal() {
-  if (!dealForm.customerName.trim() || !dealForm.deposit.trim()) {
-    await showError('请填写客户姓名和定金/预付金')
-    return
-  }
-  dealSubmitting.value = true
-  try {
-    await createDeal({ ...dealForm, customerCode: form.customerCode })
-    ElMessage.success('定金已登记')
-    dealDialogVisible.value = false
-    router.push('/deals')
-  } catch (error) {
-    await showError(error.message || '登记定金失败')
-  } finally {
-    dealSubmitting.value = false
-  }
 }
 
 async function syncUploadList(field, fileList) {
@@ -187,6 +201,7 @@ async function syncUploadList(field, fileList) {
     await recognizeFirstDouyinImage()
   }
 }
+
 
 async function recognizeFirstDouyinImage() {
   if (!form.hasWechatId || !form.douyinImages.length) return
@@ -254,13 +269,13 @@ function escapeHtml(value) {
 }
 async function normalizeUploadFile(file, index = 0) {
   const sortOrder = Number.isFinite(file.sortOrder) ? file.sortOrder : index
-  if (file.url?.startsWith('data:')) return { name: file.name, url: file.url, uid: file.uid, sortOrder }
+  if (file.url?.startsWith('data:')) return { name: file.name, url: file.url, storageUrl: file.storageUrl, uid: file.uid, sortOrder }
   if (file.raw) return { name: file.name, url: await readImageFile(file.raw), uid: file.uid, sortOrder }
-  return { name: file.name, url: file.url, uid: file.uid, sortOrder }
+  return { name: file.name, url: resolveAssetUrl(file.storageUrl || file.url), storageUrl: file.storageUrl || file.url, uid: file.uid, sortOrder }
 }
-function previewImage(file) { preview.name = file.name; preview.url = file.url; preview.visible = true }
-function normalizeSavedImages(images = []) { return images.map((image, index) => ({ name: image.name || `图片${index + 1}`, url: image.url, uid: image.uid || `${Date.now()}-${index}`, sortOrder: Number.isFinite(image.sortOrder) ? image.sortOrder : index })).sort((left, right) => left.sortOrder - right.sortOrder) }
-function compactImages(images = []) { return images.map((image, index) => ({ name: image.name, url: image.url, uid: image.uid, sortOrder: Number.isFinite(image.sortOrder) ? image.sortOrder : index })) }
+function previewImage(file) { preview.name = file.name; preview.url = resolveAssetUrl(file.url); preview.visible = true }
+function normalizeSavedImages(images = []) { return images.map((image, index) => ({ name: image.name || `图片${index + 1}`, url: resolveAssetUrl(image.url), storageUrl: image.url, uid: image.uid || `${Date.now()}-${index}`, sortOrder: Number.isFinite(image.sortOrder) ? image.sortOrder : index })).sort((left, right) => left.sortOrder - right.sortOrder) }
+function compactImages(images = []) { return images.map((image, index) => ({ name: image.name, url: image.storageUrl || image.url, uid: image.uid, sortOrder: Number.isFinite(image.sortOrder) ? image.sortOrder : index })) }
 function readImageFile(file) {
   if (!file?.type?.startsWith('image/')) {
     return readFileAsDataUrl(file)
@@ -305,7 +320,6 @@ function loadImage(url) {
   })
 }
 function normalizeStatus(status) { if (status === 'TO_DEAL') return 'FOLLOWING'; if (status === 'DEALED') return 'DEPOSIT_PAID'; return status || 'NEW' }
-function formatDate(date) { const year = date.getFullYear(); const month = String(date.getMonth() + 1).padStart(2, '0'); const day = String(date.getDate()).padStart(2, '0'); return `${year}-${month}-${day}` }
 function showError(message) { return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' }) }
 </script>
 <style scoped>
@@ -323,6 +337,10 @@ function showError(message) { return ElMessageBox.alert(message, '提示', { con
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.status-wide {
+  grid-column: 1 / -1;
 }
 
 .crm-picture-upload {
@@ -425,6 +443,15 @@ function showError(message) { return ElMessageBox.alert(message, '提示', { con
   gap: 10px;
 }
 
+.history-demand-item {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(178, 174, 250, 0.24);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
 .history-demand-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -457,6 +484,36 @@ function showError(message) { return ElMessageBox.alert(message, '提示', { con
 .history-demand-card span,
 .history-demand-card small {
   color: var(--text-muted);
+}
+
+.history-demand-follow-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-demand-follow {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(79, 200, 120, 0.11), rgba(178, 174, 250, 0.13));
+}
+
+.history-demand-follow strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.history-demand-follow span,
+.history-demand-follow p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.history-demand-empty {
+  --el-empty-padding: 8px 0;
 }
 
 .form-actions {

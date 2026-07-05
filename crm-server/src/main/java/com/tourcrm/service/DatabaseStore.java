@@ -12,6 +12,7 @@ import com.tourcrm.dto.OperationLogReportRow;
 import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.PerformanceRowResponse;
 import com.tourcrm.dto.StatusChangeRecord;
+import com.tourcrm.dto.ThirdPartyDownloadResponse;
 import com.tourcrm.dto.UserRecord;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -54,9 +55,9 @@ public class DatabaseStore {
             return List.of();
         }
         return jdbcTemplate.query("""
-                        SELECT customer_code, source_platform, contact_info, has_wechat_id, uploader, uploader_employee_code,
-                               status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
-                               assigned_sales_employee_code, deposit_amount, status_remark, refund_amount, refunded_at,
+                        SELECT customer_code, source_platform, add_method, contact_info, has_wechat_id, uploader, uploader_employee_code,
+                               org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                               assigned_sales_employee_code, deposit_amount, remaining_balance, status_remark, refund_amount, refunded_at,
                                landing_at, landing_remark, created_at_text, updated_at_text
                         FROM crm_clues
                         WHERE contact_key = ? AND status <> 'DELETED'
@@ -71,9 +72,9 @@ public class DatabaseStore {
             return List.of();
         }
         return jdbcTemplate.query("""
-                        SELECT customer_code, source_platform, contact_info, has_wechat_id, uploader, uploader_employee_code,
-                               status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
-                               assigned_sales_employee_code, deposit_amount, status_remark, refund_amount, refunded_at,
+                        SELECT customer_code, source_platform, add_method, contact_info, has_wechat_id, uploader, uploader_employee_code,
+                               org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                               assigned_sales_employee_code, deposit_amount, remaining_balance, status_remark, refund_amount, refunded_at,
                                landing_at, landing_remark, created_at_text, updated_at_text
                         FROM crm_clues
                         WHERE status <> 'DELETED'
@@ -91,12 +92,33 @@ public class DatabaseStore {
         }
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject("""
-                            SELECT customer_code, source_platform, contact_info, has_wechat_id, uploader, uploader_employee_code,
-                                   status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
-                                   assigned_sales_employee_code, deposit_amount, status_remark, refund_amount, refunded_at,
+                            SELECT customer_code, source_platform, add_method, contact_info, has_wechat_id, uploader, uploader_employee_code,
+                                   org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                                   assigned_sales_employee_code, deposit_amount, remaining_balance, status_remark, refund_amount, refunded_at,
                                    landing_at, landing_remark, created_at_text, updated_at_text
                             FROM crm_clues
                             WHERE customer_code = ?
+                            """,
+                    (rs, rowNum) -> readClueRow(rs),
+                    customerCode));
+        } catch (EmptyResultDataAccessException error) {
+            return Optional.empty();
+        }
+    }
+
+    public Optional<ClueResponse> findClueByCustomerCodeForUpdate(String customerCode) {
+        if (!StringUtils.hasText(customerCode)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject("""
+                            SELECT customer_code, source_platform, add_method, contact_info, has_wechat_id, uploader, uploader_employee_code,
+                                   org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                                   assigned_sales_employee_code, deposit_amount, remaining_balance, status_remark, refund_amount, refunded_at,
+                                   landing_at, landing_remark, created_at_text, updated_at_text
+                            FROM crm_clues
+                            WHERE customer_code = ?
+                            FOR UPDATE
                             """,
                     (rs, rowNum) -> readClueRow(rs),
                     customerCode));
@@ -113,6 +135,46 @@ public class DatabaseStore {
                 Timestamp.valueOf(date.plusDays(1).atStartOfDay()));
     }
 
+    @Transactional
+    public int nextClueDailySequence(LocalDate date, String sequenceScope) {
+        String scope = StringUtils.hasText(sequenceScope) ? sequenceScope.trim().toUpperCase(Locale.ROOT) : "HQ";
+        jdbcTemplate.update("""
+                        INSERT INTO crm_clue_daily_sequences (sequence_date, sequence_scope, last_sequence)
+                        VALUES (?, ?, LAST_INSERT_ID(1))
+                        ON DUPLICATE KEY UPDATE last_sequence = LAST_INSERT_ID(last_sequence + 1)
+                        """,
+                java.sql.Date.valueOf(date),
+                scope);
+        Long sequence = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        return sequence == null ? 1 : sequence.intValue();
+    }
+
+    @Transactional
+    public int nextDealDailySequence(LocalDate date, String sequenceScope) {
+        String scope = StringUtils.hasText(sequenceScope) ? sequenceScope.trim().toUpperCase(Locale.ROOT) : "TOTAL";
+        jdbcTemplate.update("""
+                        INSERT INTO crm_deal_daily_sequences (sequence_date, sequence_scope, last_sequence)
+                        VALUES (?, ?, LAST_INSERT_ID(1))
+                        ON DUPLICATE KEY UPDATE last_sequence = LAST_INSERT_ID(last_sequence + 1)
+                        """,
+                java.sql.Date.valueOf(date),
+                scope);
+        Long sequence = jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        return sequence == null ? 1 : sequence.intValue();
+    }
+
+    public void acquireContactLock(String contactKey) {
+        if (!StringUtils.hasText(contactKey)) {
+            return;
+        }
+        jdbcTemplate.update("INSERT IGNORE INTO crm_contact_locks (contact_key) VALUES (?)", contactKey);
+        jdbcTemplate.queryForObject("SELECT contact_key FROM crm_contact_locks WHERE contact_key = ? FOR UPDATE", String.class, contactKey);
+    }
+
+    public void releaseContactLock(String contactKey) {
+        // Row locks are released automatically when the surrounding transaction ends.
+    }
+
     public boolean clueExists(String customerCode) {
         Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM crm_clues WHERE customer_code = ?", Long.class, customerCode);
         return count != null && count > 0;
@@ -125,6 +187,7 @@ public class DatabaseStore {
             String customerCode,
             String contactInfo,
             String sourcePlatform,
+            String addMethod,
             String status,
             String uploader,
             String assignedSales,
@@ -134,7 +197,7 @@ public class DatabaseStore {
             Integer pageSize
     ) {
         List<Object> params = new ArrayList<>();
-        String where = buildClueWhereSql(visibleUploaderCodes, visibleSalesCode, keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, params);
+        String where = buildClueWhereSql(visibleUploaderCodes, visibleSalesCode, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, params);
         return queryCluePage(where, params, page, pageSize);
     }
 
@@ -145,6 +208,7 @@ public class DatabaseStore {
             String customerCode,
             String contactInfo,
             String sourcePlatform,
+            String addMethod,
             String status,
             String uploader,
             String assignedSales,
@@ -153,12 +217,12 @@ public class DatabaseStore {
             int limit
     ) {
         List<Object> params = new ArrayList<>();
-        String where = buildClueWhereSql(visibleUploaderCodes, visibleSalesCode, keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, params);
+        String where = buildClueWhereSql(visibleUploaderCodes, visibleSalesCode, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, params);
         params.add(Math.max(1, Math.min(limit, 50000)));
         return jdbcTemplate.query("""
-                        SELECT customer_code, source_platform, contact_info, has_wechat_id, uploader, uploader_employee_code,
-                               status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
-                               assigned_sales_employee_code, deposit_amount, status_remark, refund_amount, refunded_at,
+                        SELECT customer_code, source_platform, add_method, contact_info, has_wechat_id, uploader, uploader_employee_code,
+                               org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                               assigned_sales_employee_code, deposit_amount, remaining_balance, status_remark, refund_amount, refunded_at,
                                landing_at, landing_remark, created_at_text, updated_at_text
                         FROM crm_clues
                         WHERE """ + where + """
@@ -176,6 +240,7 @@ public class DatabaseStore {
             String customerCode,
             String contactInfo,
             String sourcePlatform,
+            String addMethod,
             String status,
             String startDate,
             String endDate,
@@ -183,7 +248,7 @@ public class DatabaseStore {
             Integer pageSize
     ) {
         List<Object> params = new ArrayList<>();
-        String where = buildClueWhereSql(unrestricted ? null : visibleUploaderCodes, null, keyword, customerCode, contactInfo, sourcePlatform, null, null, null, startDate, endDate, params);
+        String where = buildClueWhereSql(unrestricted ? null : visibleUploaderCodes, null, keyword, customerCode, contactInfo, sourcePlatform, addMethod, null, null, null, startDate, endDate, params);
         where += " AND (assigned_sales_employee_code IS NULL OR assigned_sales_employee_code = '')";
         where += " AND status NOT IN ('DEPOSIT_PAID', 'REFUNDED', 'LANDED', 'DELETED')";
         if (!StringUtils.hasText(status) || "PENDING".equalsIgnoreCase(status)) {
@@ -201,6 +266,7 @@ public class DatabaseStore {
             String customerCode,
             String contactInfo,
             String sourcePlatform,
+            String addMethod,
             String status,
             String startDate,
             String endDate,
@@ -208,7 +274,7 @@ public class DatabaseStore {
             Integer pageSize
     ) {
         List<Object> params = new ArrayList<>();
-        String where = buildClueWhereSql(null, null, keyword, customerCode, contactInfo, sourcePlatform, null, null, null, startDate, endDate, params);
+        String where = buildClueWhereSql(null, null, keyword, customerCode, contactInfo, sourcePlatform, addMethod, null, null, null, startDate, endDate, params);
         if (StringUtils.hasText(salesEmployeeCode)) {
             where += " AND assigned_sales_employee_code = ?";
             params.add(salesEmployeeCode);
@@ -222,6 +288,54 @@ public class DatabaseStore {
             }
         }
         return queryCluePage(where, params, page, pageSize);
+    }
+
+    public PageResponse<ThirdPartyDownloadResponse> queryThirdPartyDownloadPage(
+            boolean downloaded,
+            String keyword,
+            String customerCode,
+            String contactInfo,
+            String sourcePlatform,
+            String addMethod,
+            String status,
+            String uploader,
+            String assignedSales,
+            String startDate,
+            String endDate,
+            Integer page,
+            Integer pageSize
+    ) {
+        List<Object> params = new ArrayList<>();
+        String where = buildClueWhereSql(null, null, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, params);
+        if (downloaded) {
+            where += " AND EXISTS (SELECT 1 FROM crm_third_party_downloads tpd WHERE tpd.customer_code = crm_clues.customer_code)";
+        } else {
+            where += " AND NOT EXISTS (SELECT 1 FROM crm_third_party_downloads tpd WHERE tpd.customer_code = crm_clues.customer_code)";
+        }
+        return queryThirdPartyDownloadPage(where, params, downloaded, page, pageSize);
+    }
+
+    public boolean markThirdPartyDownloaded(String customerCode, String downloadedBy, String downloadedByCode, String downloadedAt) {
+        int existing = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM crm_clues WHERE customer_code = ? AND status <> 'DELETED'",
+                Integer.class,
+                customerCode
+        );
+        if (existing < 1) {
+            return false;
+        }
+        jdbcTemplate.update("""
+                        INSERT IGNORE INTO crm_third_party_downloads
+                          (customer_code, downloaded_by, downloaded_by_code, downloaded_at_text, downloaded_at_value)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                customerCode,
+                downloadedBy,
+                downloadedByCode,
+                downloadedAt,
+                parseDateTime(downloadedAt)
+        );
+        return true;
     }
 
     public PageResponse<ClueResponse> queryStatsDetailPage(
@@ -416,9 +530,9 @@ public class DatabaseStore {
         pageParams.add((safePage - 1) * safePageSize);
         pageParams.add(safePageSize);
         String pageSql = """
-                SELECT customer_code, source_platform, contact_info, has_wechat_id, uploader, uploader_employee_code,
-                       status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
-                       assigned_sales_employee_code, deposit_amount, status_remark, refund_amount, refunded_at,
+                SELECT customer_code, source_platform, add_method, contact_info, has_wechat_id, uploader, uploader_employee_code,
+                       org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                       assigned_sales_employee_code, deposit_amount, remaining_balance, status_remark, refund_amount, refunded_at,
                        landing_at, landing_remark, created_at_text, updated_at_text
                 FROM crm_clues
                 """ + "WHERE " + where + "\n" + """
@@ -431,7 +545,42 @@ public class DatabaseStore {
         return new PageResponse<>(rows, total, safePage, safePageSize, (long) safePage * safePageSize < total);
     }
 
+    private PageResponse<ThirdPartyDownloadResponse> queryThirdPartyDownloadPage(String where, List<Object> params, boolean downloaded, Integer page, Integer pageSize) {
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+        long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM crm_clues WHERE " + where, Long.class, params.toArray());
+        List<Object> pageParams = new ArrayList<>(params);
+        pageParams.add((safePage - 1) * safePageSize);
+        pageParams.add(safePageSize);
+        String orderBy = downloaded
+                ? "ORDER BY (SELECT tpd.downloaded_at_value FROM crm_third_party_downloads tpd WHERE tpd.customer_code = crm_clues.customer_code) DESC, customer_code DESC"
+                : "ORDER BY COALESCE(updated_at_value, created_at_value) DESC, customer_code DESC";
+        String pageSql = """
+                SELECT customer_code, source_platform, add_method, contact_info, has_wechat_id, uploader, uploader_employee_code,
+                       org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                       assigned_sales_employee_code, deposit_amount, remaining_balance, status_remark, refund_amount, refunded_at,
+                       landing_at, landing_remark, created_at_text, updated_at_text,
+                       (SELECT tpd.downloaded_by FROM crm_third_party_downloads tpd WHERE tpd.customer_code = crm_clues.customer_code) AS downloaded_by,
+                       (SELECT tpd.downloaded_by_code FROM crm_third_party_downloads tpd WHERE tpd.customer_code = crm_clues.customer_code) AS downloaded_by_code,
+                       (SELECT tpd.downloaded_at_text FROM crm_third_party_downloads tpd WHERE tpd.customer_code = crm_clues.customer_code) AS downloaded_at_text
+                FROM crm_clues
+                """ + "WHERE " + where + "\n" + orderBy + "\n" + """
+                LIMIT ?, ?
+                """;
+        List<ThirdPartyDownloadResponse> rows = jdbcTemplate.query(pageSql,
+                (rs, rowNum) -> new ThirdPartyDownloadResponse(
+                        readClueListRow(rs),
+                        rs.getString("downloaded_by"),
+                        rs.getString("downloaded_by_code"),
+                        rs.getString("downloaded_at_text")
+                ),
+                pageParams.toArray());
+        return new PageResponse<>(rows, total, safePage, safePageSize, (long) safePage * safePageSize < total);
+    }
+
     public PageResponse<AssignLogReportRow> queryAssignLogReportPage(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
             String customerCode,
             String action,
             String operator,
@@ -442,7 +591,7 @@ public class DatabaseStore {
             Integer pageSize
     ) {
         List<Object> params = new ArrayList<>();
-        String where = buildAssignLogWhereSql(customerCode, action, operator, salesEmployeeCode, startDate, endDate, params);
+        String where = buildAssignLogWhereSql(visibleUploaderCodes, visibleSalesCodes, customerCode, action, operator, salesEmployeeCode, startDate, endDate, params);
         int safePage = page == null || page < 1 ? 1 : page;
         int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
         long total = jdbcTemplate.queryForObject("""
@@ -490,6 +639,8 @@ public class DatabaseStore {
     }
 
     public PageResponse<OperationLogReportRow> queryOperationLogReportPage(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
             String customerCode,
             String operator,
             String field,
@@ -499,7 +650,7 @@ public class DatabaseStore {
             Integer pageSize
     ) {
         List<Object> params = new ArrayList<>();
-        String where = buildOperationLogWhereSql(customerCode, operator, field, startDate, endDate, params);
+        String where = buildOperationLogWhereSql(visibleUploaderCodes, visibleSalesCodes, customerCode, operator, field, startDate, endDate, params);
         int safePage = page == null || page < 1 ? 1 : page;
         int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
         long total = jdbcTemplate.queryForObject("""
@@ -552,6 +703,7 @@ public class DatabaseStore {
             String customerCode,
             String contactInfo,
             String sourcePlatform,
+            String addMethod,
             String status,
             String uploader,
             String assignedSales,
@@ -587,6 +739,10 @@ public class DatabaseStore {
             where.append(" AND source_platform = ?");
             params.add(sourcePlatform.trim().toUpperCase());
         }
+        if (StringUtils.hasText(addMethod)) {
+            where.append(" AND add_method = ?");
+            params.add(addMethod.trim().toUpperCase(Locale.ROOT));
+        }
         if (StringUtils.hasText(status)) {
             where.append(" AND status = ?");
             params.add(status.trim().toUpperCase());
@@ -608,6 +764,7 @@ public class DatabaseStore {
                     AND (
                       LOWER(customer_code) LIKE ?
                       OR LOWER(source_platform) LIKE ?
+                      OR LOWER(add_method) LIKE ?
                       OR LOWER(contact_info) LIKE ?
                       OR LOWER(remark) LIKE ?
                       OR LOWER(status) LIKE ?
@@ -618,7 +775,7 @@ public class DatabaseStore {
                     )
                     """);
             String value = likeValue(keyword);
-            for (int i = 0; i < 9; i++) {
+            for (int i = 0; i < 10; i++) {
                 params.add(value);
             }
         }
@@ -676,6 +833,8 @@ public class DatabaseStore {
     }
 
     private String buildAssignLogWhereSql(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
             String customerCode,
             String action,
             String operator,
@@ -685,6 +844,31 @@ public class DatabaseStore {
             List<Object> params
     ) {
         StringBuilder where = new StringBuilder("clue.status <> 'DELETED'");
+        boolean hasUploaderScope = visibleUploaderCodes != null;
+        boolean hasSalesScope = visibleSalesCodes != null;
+        if (hasUploaderScope || hasSalesScope) {
+            where.append(" AND (");
+            boolean appended = false;
+            if (hasUploaderScope) {
+                appendInClause(where, params, "clue.uploader_employee_code", visibleUploaderCodes);
+                appended = true;
+            }
+            if (hasSalesScope) {
+                if (appended) {
+                    where.append(" OR ");
+                }
+                where.append("(");
+                appendInClause(where, params, "clue.assigned_sales_employee_code", visibleSalesCodes);
+                where.append(" OR ");
+                appendInClause(where, params, "log.from_sales_employee_code", visibleSalesCodes);
+                where.append(" OR ");
+                appendInClause(where, params, "log.to_sales_employee_code", visibleSalesCodes);
+                where.append(" OR ");
+                appendInClause(where, params, "log.operator_code", visibleSalesCodes);
+                where.append(")");
+            }
+            where.append(")");
+        }
         appendLike(where, params, "log.customer_code", customerCode);
         if (StringUtils.hasText(action)) {
             where.append(" AND log.action = ?");
@@ -714,6 +898,8 @@ public class DatabaseStore {
     }
 
     private String buildOperationLogWhereSql(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
             String customerCode,
             String operator,
             String field,
@@ -722,6 +908,27 @@ public class DatabaseStore {
             List<Object> params
     ) {
         StringBuilder where = new StringBuilder("clue.status <> 'DELETED'");
+        boolean hasUploaderScope = visibleUploaderCodes != null;
+        boolean hasSalesScope = visibleSalesCodes != null;
+        if (hasUploaderScope || hasSalesScope) {
+            where.append(" AND (");
+            boolean appended = false;
+            if (hasUploaderScope) {
+                appendInClause(where, params, "clue.uploader_employee_code", visibleUploaderCodes);
+                appended = true;
+            }
+            if (hasSalesScope) {
+                if (appended) {
+                    where.append(" OR ");
+                }
+                where.append("(");
+                appendInClause(where, params, "clue.assigned_sales_employee_code", visibleSalesCodes);
+                where.append(" OR ");
+                appendInClause(where, params, "log.operator_code", visibleSalesCodes);
+                where.append(")");
+            }
+            where.append(")");
+        }
         appendLike(where, params, "log.customer_code", customerCode);
         if (StringUtils.hasText(operator)) {
             where.append(" AND (LOWER(log.operator) LIKE ? OR LOWER(log.operator_code) LIKE ?)");
@@ -818,14 +1025,14 @@ public class DatabaseStore {
         try {
             jdbcTemplate.update("""
                             INSERT INTO crm_clues (
-                              customer_code, source_platform, contact_info, contact_key, has_wechat_id, uploader, uploader_employee_code,
-                              status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
-                              assigned_sales_employee_code, deposit_amount, deposit_amount_value, status_remark,
+                              customer_code, source_platform, add_method, contact_info, contact_key, has_wechat_id, uploader, uploader_employee_code,
+                              org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                              assigned_sales_employee_code, deposit_amount, deposit_amount_value, remaining_balance, remaining_balance_value, status_remark,
                               refund_amount, refund_amount_value, refunded_at, refunded_at_value, landing_at,
                               landing_at_value, landing_remark, created_at_text, created_at_value, updated_at_text,
                               updated_at_value
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                     clueParams(row));
             replaceClueChildren(row);
@@ -838,21 +1045,25 @@ public class DatabaseStore {
     private void upsertClue(ClueResponse row) {
         jdbcTemplate.update("""
                             INSERT INTO crm_clues (
-                              customer_code, source_platform, contact_info, contact_key, has_wechat_id, uploader, uploader_employee_code,
-                              status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
-                              assigned_sales_employee_code, deposit_amount, deposit_amount_value, status_remark,
+                              customer_code, source_platform, add_method, contact_info, contact_key, has_wechat_id, uploader, uploader_employee_code,
+                              org_type, branch_id, branch_name, status, remark, repeat_demand, original_customer_code, demand_sequence, assigned_sales,
+                              assigned_sales_employee_code, deposit_amount, deposit_amount_value, remaining_balance, remaining_balance_value, status_remark,
                               refund_amount, refund_amount_value, refunded_at, refunded_at_value, landing_at,
                               landing_at_value, landing_remark, created_at_text, created_at_value, updated_at_text,
                               updated_at_value
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON DUPLICATE KEY UPDATE
                               source_platform = VALUES(source_platform),
+                              add_method = VALUES(add_method),
                               contact_info = VALUES(contact_info),
                               contact_key = VALUES(contact_key),
                               has_wechat_id = VALUES(has_wechat_id),
                               uploader = VALUES(uploader),
                               uploader_employee_code = VALUES(uploader_employee_code),
+                              org_type = VALUES(org_type),
+                              branch_id = VALUES(branch_id),
+                              branch_name = VALUES(branch_name),
                               status = VALUES(status),
                               remark = VALUES(remark),
                               repeat_demand = VALUES(repeat_demand),
@@ -862,6 +1073,8 @@ public class DatabaseStore {
                               assigned_sales_employee_code = VALUES(assigned_sales_employee_code),
                               deposit_amount = VALUES(deposit_amount),
                               deposit_amount_value = VALUES(deposit_amount_value),
+                              remaining_balance = VALUES(remaining_balance),
+                              remaining_balance_value = VALUES(remaining_balance_value),
                               status_remark = VALUES(status_remark),
                               refund_amount = VALUES(refund_amount),
                               refund_amount_value = VALUES(refund_amount_value),
@@ -880,10 +1093,10 @@ public class DatabaseStore {
 
     private Object[] clueParams(ClueResponse row) {
         return new Object[]{
-                row.customerCode(), row.sourcePlatform(), row.contactInfo(), contactKey(row.contactInfo()), bool(row.hasWechatId()), row.uploader(),
-                row.uploaderEmployeeCode(), row.status(), row.remark(), bool(row.repeatDemand()), row.originalCustomerCode(),
+                row.customerCode(), row.sourcePlatform(), row.addMethod(), row.contactInfo(), contactKey(row.contactInfo()), bool(row.hasWechatId()), row.uploader(),
+                row.uploaderEmployeeCode(), row.orgType(), row.branchId(), row.branchName(), row.status(), row.remark(), bool(row.repeatDemand()), row.originalCustomerCode(),
                 row.demandSequence(), row.assignedSales(), row.assignedSalesEmployeeCode(), row.depositAmount(),
-                parseMoney(row.depositAmount()), row.statusRemark(), row.refundAmount(), parseMoney(row.refundAmount()),
+                parseMoney(row.depositAmount()), row.remainingBalance(), parseMoney(row.remainingBalance()), row.statusRemark(), row.refundAmount(), parseMoney(row.refundAmount()),
                 row.refundedAt(), parseDateTime(row.refundedAt()), row.landingAt(), parseDateTime(row.landingAt()),
                 row.landingRemark(), row.createdAt(), parseDateTime(row.createdAt()), row.updatedAt(), parseDateTime(row.updatedAt())
         };
@@ -900,7 +1113,7 @@ public class DatabaseStore {
         }
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject("""
-                            SELECT deal_code, customer_code, customer_name, deposit, booking_date, add_wechat_date, quote_text,
+                            SELECT deal_code, customer_code, customer_name, deposit, remaining_balance, booking_date, add_wechat_date, quote_text,
                                    travel_date, itinerary, deal_date, deal_user, deal_user_code, total_deal_sequence,
                                    personal_deal_sequence, status, refund_amount, refund_remark, refunded_at, landing_at,
                                    landing_remark, created_at_text, updated_at_text
@@ -953,7 +1166,7 @@ public class DatabaseStore {
             unionParams.add(salesEmployeeCode.trim().toUpperCase(Locale.ROOT));
         }
         String unionSql = """
-                SELECT deal_code, customer_code, customer_name, deposit, booking_date, add_wechat_date,
+                SELECT deal_code, customer_code, customer_name, deposit, remaining_balance, booking_date, add_wechat_date,
                        quote_text, travel_date, itinerary, deal_date, deal_user, deal_user_code,
                        total_deal_sequence, personal_deal_sequence, status, refund_amount, refund_remark,
                        refunded_at, landing_at, landing_remark, created_at_text, updated_at_text,
@@ -963,6 +1176,7 @@ public class DatabaseStore {
                          d.customer_code,
                          d.customer_name,
                          COALESCE(NULLIF(c.deposit_amount, ''), d.deposit) AS deposit,
+                         COALESCE(NULLIF(c.remaining_balance, ''), d.remaining_balance) AS remaining_balance,
                          d.booking_date,
                          d.add_wechat_date,
                          d.quote_text,
@@ -992,6 +1206,7 @@ public class DatabaseStore {
                          c.customer_code,
                          CASE WHEN c.contact_info IS NOT NULL AND c.contact_info <> '' THEN c.contact_info ELSE c.customer_code END AS customer_name,
                          c.deposit_amount AS deposit,
+                         c.remaining_balance AS remaining_balance,
                          '' AS booking_date,
                          '' AS add_wechat_date,
                          '' AS quote_text,
@@ -1038,7 +1253,7 @@ public class DatabaseStore {
         pageParams.add((safePage - 1) * safePageSize);
         pageParams.add(safePageSize);
         String pageSql = """
-                SELECT deal_code, customer_code, customer_name, deposit, booking_date, add_wechat_date,
+                SELECT deal_code, customer_code, customer_name, deposit, remaining_balance, booking_date, add_wechat_date,
                        quote_text, travel_date, itinerary, deal_date, deal_user, deal_user_code,
                        total_deal_sequence, personal_deal_sequence, status, refund_amount, refund_remark,
                        refunded_at, landing_at, landing_remark, created_at_text, updated_at_text
@@ -1072,7 +1287,7 @@ public class DatabaseStore {
         params.addAll(filterParams);
         params.add(Math.max(1, Math.min(limit, 50000)));
         String sql = """
-                SELECT deal_code, customer_code, customer_name, deposit, booking_date, add_wechat_date,
+                SELECT deal_code, customer_code, customer_name, deposit, remaining_balance, booking_date, add_wechat_date,
                        quote_text, travel_date, itinerary, deal_date, deal_user, deal_user_code,
                        total_deal_sequence, personal_deal_sequence, status, refund_amount, refund_remark,
                        refunded_at, landing_at, landing_remark, created_at_text, updated_at_text
@@ -1134,7 +1349,7 @@ public class DatabaseStore {
             unionParams.add(salesEmployeeCode.trim().toUpperCase(Locale.ROOT));
         }
         String unionSql = """
-                SELECT deal_code, customer_code, customer_name, deposit, booking_date, add_wechat_date,
+                SELECT deal_code, customer_code, customer_name, deposit, remaining_balance, booking_date, add_wechat_date,
                        quote_text, travel_date, itinerary, deal_date, deal_user, deal_user_code,
                        total_deal_sequence, personal_deal_sequence, status, refund_amount, refund_remark,
                        refunded_at, landing_at, landing_remark, created_at_text, updated_at_text,
@@ -1144,6 +1359,7 @@ public class DatabaseStore {
                          d.customer_code,
                          d.customer_name,
                          COALESCE(NULLIF(c.deposit_amount, ''), d.deposit) AS deposit,
+                         COALESCE(NULLIF(c.remaining_balance, ''), d.remaining_balance) AS remaining_balance,
                          d.booking_date,
                          d.add_wechat_date,
                          d.quote_text,
@@ -1173,6 +1389,7 @@ public class DatabaseStore {
                          c.customer_code,
                          CASE WHEN c.contact_info IS NOT NULL AND c.contact_info <> '' THEN c.contact_info ELSE c.customer_code END AS customer_name,
                          c.deposit_amount AS deposit,
+                         c.remaining_balance AS remaining_balance,
                          '' AS booking_date,
                          '' AS add_wechat_date,
                          '' AS quote_text,
@@ -1218,6 +1435,7 @@ public class DatabaseStore {
                 rs.getString("customer_code"),
                 rs.getString("customer_name"),
                 rs.getString("deposit"),
+                rs.getString("remaining_balance"),
                 rs.getString("booking_date"),
                 rs.getString("add_wechat_date"),
                 rs.getString("quote_text"),
@@ -1256,14 +1474,14 @@ public class DatabaseStore {
         try {
             jdbcTemplate.update("""
                             INSERT INTO crm_deals (
-                              deal_code, customer_code, customer_name, deposit, deposit_value, booking_date,
+                              deal_code, customer_code, customer_name, deposit, deposit_value, remaining_balance, remaining_balance_value, booking_date,
                               booking_date_value, add_wechat_date, add_wechat_date_value, quote_text, travel_date,
                               travel_date_value, itinerary, deal_date, deal_date_value, deal_user, deal_user_code,
                               total_deal_sequence, personal_deal_sequence, status, refund_amount, refund_amount_value,
                               refund_remark, refunded_at, refunded_at_value, landing_at, landing_at_value,
                               landing_remark, created_at_text, created_at_value, updated_at_text, updated_at_value
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                     dealParams(row));
             return true;
@@ -1275,19 +1493,21 @@ public class DatabaseStore {
     private void upsertDeal(DealResponse row) {
         jdbcTemplate.update("""
                             INSERT INTO crm_deals (
-                              deal_code, customer_code, customer_name, deposit, deposit_value, booking_date,
+                              deal_code, customer_code, customer_name, deposit, deposit_value, remaining_balance, remaining_balance_value, booking_date,
                               booking_date_value, add_wechat_date, add_wechat_date_value, quote_text, travel_date,
                               travel_date_value, itinerary, deal_date, deal_date_value, deal_user, deal_user_code,
                               total_deal_sequence, personal_deal_sequence, status, refund_amount, refund_amount_value,
                               refund_remark, refunded_at, refunded_at_value, landing_at, landing_at_value,
                               landing_remark, created_at_text, created_at_value, updated_at_text, updated_at_value
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON DUPLICATE KEY UPDATE
                               customer_code = VALUES(customer_code),
                               customer_name = VALUES(customer_name),
                               deposit = VALUES(deposit),
                               deposit_value = VALUES(deposit_value),
+                              remaining_balance = VALUES(remaining_balance),
+                              remaining_balance_value = VALUES(remaining_balance_value),
                               booking_date = VALUES(booking_date),
                               booking_date_value = VALUES(booking_date_value),
                               add_wechat_date = VALUES(add_wechat_date),
@@ -1322,7 +1542,7 @@ public class DatabaseStore {
     private Object[] dealParams(DealResponse row) {
         return new Object[]{
                 row.dealCode(), row.customerCode(), row.customerName(), row.deposit(), parseMoney(row.deposit()),
-                row.bookingDate(), parseDate(row.bookingDate()), row.addWechatDate(), parseDate(row.addWechatDate()),
+                row.remainingBalance(), parseMoney(row.remainingBalance()), row.bookingDate(), parseDate(row.bookingDate()), row.addWechatDate(), parseDate(row.addWechatDate()),
                 row.quoteText(), row.travelDate(), parseDate(row.travelDate()), row.itinerary(), row.dealDate(),
                 parseDate(row.dealDate()), row.dealUser(), row.dealUserCode(), row.totalDealSequence(),
                 row.personalDealSequence(), row.status(), row.refundAmount(), parseMoney(row.refundAmount()),
@@ -1341,10 +1561,14 @@ public class DatabaseStore {
         return new ClueResponse(
                 customerCode,
                 rs.getString("source_platform"),
+                rs.getString("add_method"),
                 rs.getString("contact_info"),
                 rs.getInt("has_wechat_id") == 1,
                 rs.getString("uploader"),
                 rs.getString("uploader_employee_code"),
+                rs.getString("org_type"),
+                rs.getString("branch_id"),
+                rs.getString("branch_name"),
                 rs.getString("status"),
                 rs.getString("remark"),
                 readImages(customerCode, "DOUYIN"),
@@ -1355,6 +1579,7 @@ public class DatabaseStore {
                 rs.getString("assigned_sales"),
                 rs.getString("assigned_sales_employee_code"),
                 rs.getString("deposit_amount"),
+                rs.getString("remaining_balance"),
                 rs.getString("status_remark"),
                 rs.getString("refund_amount"),
                 rs.getString("refunded_at"),
@@ -1373,10 +1598,14 @@ public class DatabaseStore {
         return new ClueResponse(
                 rs.getString("customer_code"),
                 rs.getString("source_platform"),
+                rs.getString("add_method"),
                 rs.getString("contact_info"),
                 rs.getInt("has_wechat_id") == 1,
                 rs.getString("uploader"),
                 rs.getString("uploader_employee_code"),
+                rs.getString("org_type"),
+                rs.getString("branch_id"),
+                rs.getString("branch_name"),
                 rs.getString("status"),
                 rs.getString("remark"),
                 List.of(),
@@ -1387,6 +1616,7 @@ public class DatabaseStore {
                 rs.getString("assigned_sales"),
                 rs.getString("assigned_sales_employee_code"),
                 rs.getString("deposit_amount"),
+                rs.getString("remaining_balance"),
                 rs.getString("status_remark"),
                 rs.getString("refund_amount"),
                 rs.getString("refunded_at"),

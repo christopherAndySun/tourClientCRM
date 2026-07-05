@@ -4,6 +4,7 @@ export const FALLBACK_MENUS = [
   { code: 'ASSIGN', groupCode: 'BUSINESS', groupName: '业务', name: '分配管理', description: '销售池领取、分配、转派和释放', path: '/assign', sort: 30, enabled: true },
   { code: 'ASSIGN_LOGS', groupCode: 'BUSINESS', groupName: '业务', name: '分配日志', description: '查看领取、释放、转派和抢单冲突记录', path: '/assign-logs', sort: 35, enabled: true },
   { code: 'DEALS', groupCode: 'BUSINESS', groupName: '业务', name: '成交记录', description: '登记、编辑、退单成交数据', path: '/deals', sort: 40, enabled: true },
+  { code: 'THIRD_PARTY_POOL', groupCode: 'BUSINESS', groupName: '业务', name: '三方下载池', description: '临时给第三方下载 Word 客资', path: '/third-party-pool', sort: 45, enabled: true },
   { code: 'STATS', groupCode: 'MANAGE', groupName: '管理', name: '数据统计', description: '团队数据统计面板', path: '/index', sort: 10, enabled: true },
   { code: 'PERFORMANCE', groupCode: 'MANAGE', groupName: '管理', name: '员工绩效', description: '员工绩效和明细查询', path: '/performance', sort: 20, enabled: true },
   { code: 'OPERATION_LOGS', groupCode: 'MANAGE', groupName: '管理', name: '操作日志', description: '查看客户字段修改前后记录', path: '/operation-logs', sort: 25, enabled: true },

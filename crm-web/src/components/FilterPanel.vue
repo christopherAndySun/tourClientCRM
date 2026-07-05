@@ -48,28 +48,28 @@ defineEmits(['update:expanded'])
 }
 
 .crm-filter-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   align-items: center;
+  display: grid;
   gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
 
 .crm-filter-actions {
-  display: flex;
   align-items: center;
-  justify-content: flex-start;
+  display: flex;
   gap: 10px;
+  justify-content: flex-start;
   min-width: max-content;
 }
 
 .filter-more {
-  min-height: 42px;
-  padding: 0 14px;
+  background: #fff;
   border: 1px solid rgba(92, 108, 255, 0.22);
   border-radius: 12px;
-  background: #fff;
   color: var(--text-main);
   cursor: pointer;
+  min-height: 42px;
+  padding: 0 14px;
 }
 
 .crm-filter-panel :deep(.el-input),
@@ -85,8 +85,8 @@ defineEmits(['update:expanded'])
 }
 
 .crm-filter-panel :deep(.el-range-editor.el-input__wrapper) {
-  min-height: 42px;
   height: 42px;
+  min-height: 42px;
 }
 
 @media (min-width: 1181px) {
@@ -110,8 +110,8 @@ defineEmits(['update:expanded'])
 
   .crm-filter-panel.is-mobile-open,
   .crm-filter-panel.is-not-collapsible {
-    display: block;
     animation: filterDrop 0.18s ease both;
+    display: block;
   }
 
   .crm-filter-grid {

@@ -66,6 +66,9 @@
         <el-table-column label="联系方式" min-width="160">
           <template #default="{ row }">{{ row.contactInfo || '待补充' }}</template>
         </el-table-column>
+        <el-table-column label="添加方式" min-width="96">
+          <template #default="{ row }">{{ addMethodText(row.addMethod) }}</template>
+        </el-table-column>
         <el-table-column prop="uploader" label="运营" min-width="100" />
         <el-table-column label="销售" min-width="100">
           <template #default="{ row }">{{ row.assignedSales || '未分配' }}</template>
@@ -84,7 +87,7 @@
             <StatusTag :status="row.status" />
           </div>
           <span>{{ row.contactInfo || '联系方式待补充' }}</span>
-          <small>运营：{{ row.uploader || '-' }} · 销售：{{ row.assignedSales || '未分配' }}</small>
+          <small>{{ addMethodText(row.addMethod) }} · 运营：{{ row.uploader || '-' }} · 销售：{{ row.assignedSales || '未分配' }}</small>
           <small>{{ row.createdAt || '-' }}</small>
         </article>
       </div>
@@ -104,6 +107,7 @@ import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
 import { getStoredUser } from '../utils/session'
+import { addMethodText } from '../utils/status'
 
 const TreeNode = defineComponent({
   name: 'TreeNode',
@@ -177,6 +181,7 @@ const metricCards = computed(() => [
   { key: 'repeat', label: '老客新需求', value: stats.repeatDemandCount || 0, onClick: () => openDetail('REPEAT', '1', '老客新需求') },
   { key: 'new', label: '新录入', value: statusCount('NEW'), onClick: () => openDetail('STATUS', 'NEW', '新录入') },
   { key: 'following', label: '跟进中', value: statusCount('FOLLOWING'), onClick: () => openDetail('STATUS', 'FOLLOWING', '跟进中') },
+  { key: 'passed', label: '已通过', value: statusCount('PASSED'), className: 'stat-green', onClick: () => openDetail('STATUS', 'PASSED', '已通过') },
   { key: 'invalid', label: '无效用户', value: statusCount('INVALID'), className: 'stat-danger', onClick: () => openDetail('STATUS', 'INVALID', '无效用户') },
   { key: 'deposit', label: '已交定金', value: statusCount('DEPOSIT_PAID'), className: 'stat-pink', onClick: () => openDetail('STATUS', 'DEPOSIT_PAID', '已交定金') },
   { key: 'refunded', label: '退单', value: statusCount('REFUNDED'), className: 'stat-danger', onClick: () => openDetail('STATUS', 'REFUNDED', '退单') },

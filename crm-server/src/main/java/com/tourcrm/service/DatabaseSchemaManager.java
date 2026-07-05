@@ -32,10 +32,14 @@ public class DatabaseSchemaManager {
                   role VARCHAR(32) NOT NULL,
                   position VARCHAR(32) NOT NULL,
                   leader_employee_code VARCHAR(32) NULL,
+                  org_type VARCHAR(32) NOT NULL DEFAULT 'HEADQUARTERS',
+                  branch_id VARCHAR(64) NULL,
+                  branch_name VARCHAR(120) NULL,
                   created_at_text VARCHAR(32) NULL,
                   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   INDEX idx_crm_users_role_position (role, position),
-                  INDEX idx_crm_users_leader (leader_employee_code)
+                  INDEX idx_crm_users_leader (leader_employee_code),
+                  INDEX idx_crm_users_org (org_type, branch_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
         jdbcTemplate.execute("""
@@ -50,11 +54,15 @@ public class DatabaseSchemaManager {
                 CREATE TABLE IF NOT EXISTS crm_clues (
                   customer_code VARCHAR(64) PRIMARY KEY,
                   source_platform VARCHAR(32) NULL,
+                  add_method VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
                   contact_info VARCHAR(255) NULL,
                   contact_key VARCHAR(255) NULL,
                   has_wechat_id TINYINT NOT NULL DEFAULT 1,
                   uploader VARCHAR(80) NULL,
                   uploader_employee_code VARCHAR(32) NULL,
+                  org_type VARCHAR(32) NOT NULL DEFAULT 'HEADQUARTERS',
+                  branch_id VARCHAR(64) NULL,
+                  branch_name VARCHAR(120) NULL,
                   status VARCHAR(32) NOT NULL,
                   remark TEXT NULL,
                   repeat_demand TINYINT NOT NULL DEFAULT 0,
@@ -64,6 +72,8 @@ public class DatabaseSchemaManager {
                   assigned_sales_employee_code VARCHAR(32) NULL,
                   deposit_amount VARCHAR(64) NULL,
                   deposit_amount_value DECIMAL(12,2) NULL,
+                  remaining_balance VARCHAR(64) NULL,
+                  remaining_balance_value DECIMAL(12,2) NULL,
                   status_remark TEXT NULL,
                   refund_amount VARCHAR(64) NULL,
                   refund_amount_value DECIMAL(12,2) NULL,
@@ -79,11 +89,37 @@ public class DatabaseSchemaManager {
                   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   INDEX idx_crm_clues_created (created_at_text),
                   INDEX idx_crm_clues_status_created (status, created_at_text),
+                  INDEX idx_crm_clues_add_method_created (add_method, created_at_text),
                   INDEX idx_crm_clues_uploader_created (uploader_employee_code, created_at_text),
+                  INDEX idx_crm_clues_org_created (org_type, branch_id, created_at_text),
                   INDEX idx_crm_clues_sales_created (assigned_sales_employee_code, created_at_text),
                   INDEX idx_crm_clues_contact (contact_info),
                   INDEX idx_crm_clues_contact_key (contact_key),
                   INDEX idx_crm_clues_original (original_customer_code)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_clue_daily_sequences (
+                  sequence_date DATE NOT NULL,
+                  sequence_scope VARCHAR(96) NOT NULL,
+                  last_sequence INT NOT NULL DEFAULT 0,
+                  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (sequence_date, sequence_scope)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_deal_daily_sequences (
+                  sequence_date DATE NOT NULL,
+                  sequence_scope VARCHAR(96) NOT NULL,
+                  last_sequence INT NOT NULL DEFAULT 0,
+                  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (sequence_date, sequence_scope)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_contact_locks (
+                  contact_key VARCHAR(255) PRIMARY KEY,
+                  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
         jdbcTemplate.execute("""
@@ -165,6 +201,8 @@ public class DatabaseSchemaManager {
                   customer_name VARCHAR(255) NULL,
                   deposit VARCHAR(64) NULL,
                   deposit_value DECIMAL(12,2) NULL,
+                  remaining_balance VARCHAR(64) NULL,
+                  remaining_balance_value DECIMAL(12,2) NULL,
                   booking_date VARCHAR(32) NULL,
                   booking_date_value DATE NULL,
                   add_wechat_date VARCHAR(32) NULL,
@@ -223,6 +261,18 @@ public class DatabaseSchemaManager {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
         jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_third_party_downloads (
+                  customer_code VARCHAR(64) PRIMARY KEY,
+                  downloaded_by VARCHAR(80) NULL,
+                  downloaded_by_code VARCHAR(32) NULL,
+                  downloaded_at_text VARCHAR(32) NULL,
+                  downloaded_at_value DATETIME NULL,
+                  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_crm_third_party_downloads_time (downloaded_at_value),
+                  INDEX idx_crm_third_party_downloads_operator (downloaded_by_code, downloaded_at_value)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS crm_login_sessions (
                   token_hash CHAR(64) PRIMARY KEY,
                   employee_code VARCHAR(32) NOT NULL,
@@ -236,9 +286,16 @@ public class DatabaseSchemaManager {
 
     private void addMissingColumns() {
         addColumnIfMissing("crm_users", "password", "password VARCHAR(255) NULL");
+        addColumnIfMissing("crm_users", "org_type", "org_type VARCHAR(32) NOT NULL DEFAULT 'HEADQUARTERS'");
+        addColumnIfMissing("crm_users", "branch_id", "branch_id VARCHAR(64) NULL");
+        addColumnIfMissing("crm_users", "branch_name", "branch_name VARCHAR(120) NULL");
+        addColumnIfMissing("crm_clues", "add_method", "add_method VARCHAR(32) NOT NULL DEFAULT 'ACTIVE'");
         addColumnIfMissing("crm_clues", "contact_key", "contact_key VARCHAR(255) NULL");
         addColumnIfMissing("crm_clues", "has_wechat_id", "has_wechat_id TINYINT NOT NULL DEFAULT 1");
         addColumnIfMissing("crm_clues", "uploader", "uploader VARCHAR(80) NULL");
+        addColumnIfMissing("crm_clues", "org_type", "org_type VARCHAR(32) NOT NULL DEFAULT 'HEADQUARTERS'");
+        addColumnIfMissing("crm_clues", "branch_id", "branch_id VARCHAR(64) NULL");
+        addColumnIfMissing("crm_clues", "branch_name", "branch_name VARCHAR(120) NULL");
         addColumnIfMissing("crm_clues", "remark", "remark TEXT NULL");
         addColumnIfMissing("crm_clues", "repeat_demand", "repeat_demand TINYINT NOT NULL DEFAULT 0");
         addColumnIfMissing("crm_clues", "original_customer_code", "original_customer_code VARCHAR(64) NULL");
@@ -246,6 +303,8 @@ public class DatabaseSchemaManager {
         addColumnIfMissing("crm_clues", "assigned_sales", "assigned_sales VARCHAR(80) NULL");
         addColumnIfMissing("crm_clues", "deposit_amount", "deposit_amount VARCHAR(64) NULL");
         addColumnIfMissing("crm_clues", "deposit_amount_value", "deposit_amount_value DECIMAL(12,2) NULL");
+        addColumnIfMissing("crm_clues", "remaining_balance", "remaining_balance VARCHAR(64) NULL");
+        addColumnIfMissing("crm_clues", "remaining_balance_value", "remaining_balance_value DECIMAL(12,2) NULL");
         addColumnIfMissing("crm_clues", "status_remark", "status_remark TEXT NULL");
         addColumnIfMissing("crm_clues", "refund_amount", "refund_amount VARCHAR(64) NULL");
         addColumnIfMissing("crm_clues", "refund_amount_value", "refund_amount_value DECIMAL(12,2) NULL");
@@ -258,6 +317,8 @@ public class DatabaseSchemaManager {
         addColumnIfMissing("crm_clues", "updated_at_value", "updated_at_value DATETIME NULL");
         addColumnIfMissing("crm_deals", "deposit", "deposit VARCHAR(64) NULL");
         addColumnIfMissing("crm_deals", "deposit_value", "deposit_value DECIMAL(12,2) NULL");
+        addColumnIfMissing("crm_deals", "remaining_balance", "remaining_balance VARCHAR(64) NULL");
+        addColumnIfMissing("crm_deals", "remaining_balance_value", "remaining_balance_value DECIMAL(12,2) NULL");
         addColumnIfMissing("crm_deals", "booking_date", "booking_date VARCHAR(32) NULL");
         addColumnIfMissing("crm_deals", "booking_date_value", "booking_date_value DATE NULL");
         addColumnIfMissing("crm_deals", "add_wechat_date", "add_wechat_date VARCHAR(32) NULL");
@@ -294,12 +355,14 @@ public class DatabaseSchemaManager {
     private void addMissingIndexes() {
         addIndexIfMissing("crm_users", "idx_crm_users_role_position", "CREATE INDEX idx_crm_users_role_position ON crm_users (role, position)");
         addIndexIfMissing("crm_users", "idx_crm_users_leader", "CREATE INDEX idx_crm_users_leader ON crm_users (leader_employee_code)");
+        addIndexIfMissing("crm_users", "idx_crm_users_org", "CREATE INDEX idx_crm_users_org ON crm_users (org_type, branch_id)");
         addIndexIfMissing("crm_user_menu_permissions", "idx_crm_user_menu_menu", "CREATE INDEX idx_crm_user_menu_menu ON crm_user_menu_permissions (menu_code)");
 
         addIndexIfMissing("crm_clues", "idx_crm_clues_created", "CREATE INDEX idx_crm_clues_created ON crm_clues (created_at_text)");
         addIndexIfMissing("crm_clues", "idx_crm_clues_updated", "CREATE INDEX idx_crm_clues_updated ON crm_clues (updated_at_text)");
         addIndexIfMissing("crm_clues", "idx_crm_clues_status_created", "CREATE INDEX idx_crm_clues_status_created ON crm_clues (status, created_at_text)");
         addIndexIfMissing("crm_clues", "idx_crm_clues_uploader_created", "CREATE INDEX idx_crm_clues_uploader_created ON crm_clues (uploader_employee_code, created_at_text)");
+        addIndexIfMissing("crm_clues", "idx_crm_clues_org_created", "CREATE INDEX idx_crm_clues_org_created ON crm_clues (org_type, branch_id, created_at_text)");
         addIndexIfMissing("crm_clues", "idx_crm_clues_sales_created", "CREATE INDEX idx_crm_clues_sales_created ON crm_clues (assigned_sales_employee_code, created_at_text)");
         addIndexIfMissing("crm_clues", "idx_crm_clues_sales_status_created", "CREATE INDEX idx_crm_clues_sales_status_created ON crm_clues (assigned_sales_employee_code, status, created_at_text)");
         addIndexIfMissing("crm_clues", "idx_crm_clues_uploader_status_created", "CREATE INDEX idx_crm_clues_uploader_status_created ON crm_clues (uploader_employee_code, status, created_at_text)");
@@ -359,6 +422,11 @@ public class DatabaseSchemaManager {
                       THEN CAST(REGEXP_REPLACE(COALESCE(deposit_amount, ''), '[^0-9.-]', '') AS DECIMAL(12,2))
                       ELSE NULL
                     END,
+                    remaining_balance_value = CASE
+                      WHEN REGEXP_REPLACE(COALESCE(remaining_balance, ''), '[^0-9.-]', '') REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
+                      THEN CAST(REGEXP_REPLACE(COALESCE(remaining_balance, ''), '[^0-9.-]', '') AS DECIMAL(12,2))
+                      ELSE NULL
+                    END,
                     refund_amount_value = CASE
                       WHEN REGEXP_REPLACE(COALESCE(refund_amount, ''), '[^0-9.-]', '') REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
                       THEN CAST(REGEXP_REPLACE(COALESCE(refund_amount, ''), '[^0-9.-]', '') AS DECIMAL(12,2))
@@ -374,6 +442,11 @@ public class DatabaseSchemaManager {
                 SET deposit_value = CASE
                       WHEN REGEXP_REPLACE(COALESCE(deposit, ''), '[^0-9.-]', '') REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
                       THEN CAST(REGEXP_REPLACE(COALESCE(deposit, ''), '[^0-9.-]', '') AS DECIMAL(12,2))
+                      ELSE NULL
+                    END,
+                    remaining_balance_value = CASE
+                      WHEN REGEXP_REPLACE(COALESCE(remaining_balance, ''), '[^0-9.-]', '') REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
+                      THEN CAST(REGEXP_REPLACE(COALESCE(remaining_balance, ''), '[^0-9.-]', '') AS DECIMAL(12,2))
                       ELSE NULL
                     END,
                     refund_amount_value = CASE
@@ -401,6 +474,11 @@ public class DatabaseSchemaManager {
                       THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(deposit_amount, ',', ''), '￥', ''), '¥', '')) AS DECIMAL(12,2))
                       ELSE NULL
                     END,
+                    remaining_balance_value = CASE
+                      WHEN TRIM(REPLACE(REPLACE(REPLACE(remaining_balance, ',', ''), '￥', ''), '¥', '')) REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
+                      THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(remaining_balance, ',', ''), '￥', ''), '¥', '')) AS DECIMAL(12,2))
+                      ELSE NULL
+                    END,
                     refund_amount_value = CASE
                       WHEN TRIM(REPLACE(REPLACE(REPLACE(refund_amount, ',', ''), '￥', ''), '¥', '')) REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
                       THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(refund_amount, ',', ''), '￥', ''), '¥', '')) AS DECIMAL(12,2))
@@ -416,6 +494,11 @@ public class DatabaseSchemaManager {
                 SET deposit_value = CASE
                       WHEN TRIM(REPLACE(REPLACE(REPLACE(deposit, ',', ''), '￥', ''), '¥', '')) REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
                       THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(deposit, ',', ''), '￥', ''), '¥', '')) AS DECIMAL(12,2))
+                      ELSE NULL
+                    END,
+                    remaining_balance_value = CASE
+                      WHEN TRIM(REPLACE(REPLACE(REPLACE(remaining_balance, ',', ''), '￥', ''), '¥', '')) REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
+                      THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(remaining_balance, ',', ''), '￥', ''), '¥', '')) AS DECIMAL(12,2))
                       ELSE NULL
                     END,
                     refund_amount_value = CASE

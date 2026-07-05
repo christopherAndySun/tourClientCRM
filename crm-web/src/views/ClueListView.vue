@@ -11,6 +11,7 @@
       <el-select v-model="filters.status" class="filter-field" clearable placeholder="当前状态">
         <el-option label="新录入" value="NEW" />
         <el-option label="跟进中" value="FOLLOWING" />
+        <el-option label="已通过" value="PASSED" />
         <el-option label="已交定金" value="DEPOSIT_PAID" />
         <el-option label="退单" value="REFUNDED" />
         <el-option label="已落地" value="LANDED" />
@@ -29,6 +30,11 @@
           <el-option label="抖音" value="DOUYIN" />
           <el-option label="小红书" value="XIAOHONGSHU" />
         </el-select>
+        <el-select v-model="filters.addMethod" class="filter-field" clearable placeholder="添加方式">
+          <el-option label="主动" value="ACTIVE" />
+          <el-option label="被动" value="PASSIVE" />
+          <el-option label="领队" value="GUIDE" />
+        </el-select>
         <el-input v-model="filters.uploader" class="filter-field" clearable placeholder="上传运营/编号" />
         <el-input v-model="filters.assignedSales" class="filter-field" clearable placeholder="分配销售/编号" />
         <el-input v-model="filters.keyword" class="filter-field" clearable placeholder="备注等模糊搜索" />
@@ -45,6 +51,9 @@
         <el-table-column label="来源平台" min-width="100">
           <template #default="{ row }">{{ sourcePlatformText(row.sourcePlatform) }}</template>
         </el-table-column>
+        <el-table-column label="添加方式" min-width="96">
+          <template #default="{ row }">{{ addMethodText(row.addMethod) }}</template>
+        </el-table-column>
         <el-table-column label="客户联系方式" min-width="160">
           <template #default="{ row }">{{ row.contactInfo || '待补充' }}</template>
         </el-table-column>
@@ -60,13 +69,15 @@
             <StatusTag :status="row.status" />
             <el-tag v-if="row.repeatDemand" class="status-extra" type="success">老客新需求</el-tag>
             <el-tag v-if="row.depositAmount" class="status-extra" type="warning">定金 {{ row.depositAmount }}</el-tag>
+            <el-tag v-if="row.remainingBalance" class="status-extra" type="info">尾款 {{ row.remainingBalance }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="上传时间" min-width="160" />
-        <el-table-column label="操作" width="156" fixed="right">
+        <el-table-column label="操作" width="216" fixed="right">
           <template #default="{ row }">
             <TextActions>
               <button class="table-action" type="button" @click="editRow(row)">详情/编辑</button>
+              <button class="table-action" type="button" :disabled="downloadingCode === row.customerCode" @click="downloadWord(row)">{{ downloadingCode === row.customerCode ? '下载中' : '下载' }}</button>
               <button class="table-action danger" type="button" @click="removeRow(row)">删除</button>
             </TextActions>
           </template>
@@ -91,10 +102,11 @@
         </div>
         <p class="contact-line">{{ row.contactInfo || '客户联系方式待补充' }}</p>
         <small class="compact-meta">
-          {{ sourcePlatformText(row.sourcePlatform) }} · {{ row.uploader || '-' }} · 销售：{{ row.assignedSales || '-' }} · {{ row.createdAt }}
+          {{ sourcePlatformText(row.sourcePlatform) }} · {{ addMethodText(row.addMethod) }} · {{ row.uploader || '-' }} · 销售：{{ row.assignedSales || '-' }} · {{ row.createdAt }}
         </small>
         <TextActions class="card-actions">
           <button class="table-action" type="button" @click="editRow(row)">详情/编辑</button>
+          <button class="table-action" type="button" :disabled="downloadingCode === row.customerCode" @click="downloadWord(row)">{{ downloadingCode === row.customerCode ? '下载中' : '下载' }}</button>
           <button class="table-action danger" type="button" @click="removeRow(row)">删除</button>
         </TextActions>
       </article>
@@ -124,14 +136,15 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteClue, exportClues, listClues } from '../api/clue'
+import { deleteClue, exportClues, getClue, listClues } from '../api/clue'
+import { downloadClueWordFile } from '../utils/clueWord'
 import { downloadBlob, todayFilename } from '../utils/download'
 import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import TextActions from '../components/TextActions.vue'
 import { useAuthStore } from '../stores/auth'
-import { sourcePlatformText } from '../utils/status'
+import { addMethodText, sourcePlatformText } from '../utils/status'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -140,6 +153,7 @@ const filters = reactive({
   contactInfo: '',
   status: '',
   sourcePlatform: '',
+  addMethod: '',
   uploader: '',
   assignedSales: '',
   keyword: ''
@@ -149,6 +163,7 @@ const dateRange = ref([])
 const loading = ref(false)
 const loadingMore = ref(false)
 const exporting = ref(false)
+const downloadingCode = ref('')
 const rows = ref([])
 const total = ref(0)
 const hasMore = ref(false)
@@ -219,17 +234,17 @@ function normalizePage(data) {
 
 async function downloadExcel() {
   exporting.value = true
-  ElMessage.info('????????????...')
+  ElMessage.info('正在导出客户线索...')
   try {
     const blob = await exportClues({
       ...filterParams(),
       startDate: dateRange.value?.[0],
       endDate: dateRange.value?.[1]
     })
-    downloadBlob(blob, todayFilename('????'))
-    ElMessage.success('?????????')
+    downloadBlob(blob, todayFilename('客户线索'))
+    ElMessage.success('客户线索导出成功')
   } catch (error) {
-    await showError(error.message || '??????????????')
+    await showError(error.message || '客户线索导出失败')
   } finally {
     exporting.value = false
   }
@@ -241,6 +256,20 @@ function filterParams() {
 
 function editRow(row) {
   router.push(`/clues/${row.customerCode}`)
+}
+
+async function downloadWord(row) {
+  downloadingCode.value = row.customerCode
+  try {
+    ElMessage.info('正在生成 Word 文档...')
+    const res = await getClue(row.customerCode)
+    await downloadClueWordFile(res.data)
+    ElMessage.success('Word 文档已生成')
+  } catch (error) {
+    await showError(error.message || '下载 Word 失败')
+  } finally {
+    downloadingCode.value = ''
+  }
 }
 
 async function removeRow(row) {

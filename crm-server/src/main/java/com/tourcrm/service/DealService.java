@@ -68,13 +68,15 @@ public class DealService {
 
         String now = nowText();
         String dealDate = StringUtils.hasText(request.dealDate()) ? request.dealDate().trim() : LocalDate.now().toString();
-        int sequence = (int) databaseStore.countDeals() + 1;
+        int sequence = databaseStore.nextDealDailySequence(LocalDate.now(), "TOTAL");
+        int personalSequence = databaseStore.nextDealDailySequence(LocalDate.now(), "USER:" + currentUser.employeeCode());
         for (int attempt = 0; attempt < 30; attempt++) {
             DealResponse deal = new DealResponse(
                     createDealCode(sequence + attempt),
                     request.customerCode().trim(),
                     request.customerName().trim(),
                     request.deposit().trim(),
+                    clean(request.remainingBalance()),
                     clean(request.bookingDate()),
                     clean(request.addWechatDate()),
                     clean(request.quoteText()),
@@ -84,7 +86,7 @@ public class DealService {
                     currentUser.name(),
                     currentUser.employeeCode(),
                     sequence + attempt,
-                    (int) databaseStore.countDealsByUser(currentUser.employeeCode()) + 1,
+                    personalSequence,
                     "DEPOSIT_PAID",
                     "",
                     "",
@@ -115,6 +117,7 @@ public class DealService {
                     old.customerCode(),
                     request.customerName().trim(),
                     request.deposit().trim(),
+                    clean(request.remainingBalance()),
                     clean(request.bookingDate()),
                     clean(request.addWechatDate()),
                     clean(request.quoteText()),
@@ -156,6 +159,7 @@ public class DealService {
                     old.customerCode(),
                     old.customerName(),
                     old.deposit(),
+                    old.remainingBalance(),
                     old.bookingDate(),
                     old.addWechatDate(),
                     old.quoteText(),
@@ -226,6 +230,7 @@ public class DealService {
                 old.customerCode(),
                 old.customerName(),
                 old.deposit(),
+                clean(old.remainingBalance()),
                 old.bookingDate(),
                 old.addWechatDate(),
                 old.quoteText(),
@@ -257,6 +262,7 @@ public class DealService {
             return old;
         }
         String deposit = StringUtils.hasText(clue.get().depositAmount()) ? clue.get().depositAmount() : old.deposit();
+        String remainingBalance = StringUtils.hasText(clue.get().remainingBalance()) ? clue.get().remainingBalance() : old.remainingBalance();
         String refundAmount = "REFUNDED".equals(clueStatus) && StringUtils.hasText(clue.get().refundAmount()) ? clue.get().refundAmount() : old.refundAmount();
         String refundRemark = "REFUNDED".equals(clueStatus) && StringUtils.hasText(clue.get().statusRemark()) ? clue.get().statusRemark() : old.refundRemark();
         String refundedAt = "REFUNDED".equals(clueStatus) && StringUtils.hasText(clue.get().refundedAt()) ? clue.get().refundedAt() : old.refundedAt();
@@ -267,6 +273,7 @@ public class DealService {
                 old.customerCode(),
                 old.customerName(),
                 deposit,
+                clean(remainingBalance),
                 old.bookingDate(),
                 old.addWechatDate(),
                 old.quoteText(),

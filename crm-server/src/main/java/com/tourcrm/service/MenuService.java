@@ -20,6 +20,7 @@ public class MenuService {
             new MenuItemRecord(AuthService.MENU_ASSIGN, "BUSINESS", "业务", "分配管理", "销售池领取、分配、转派和释放", "/assign", 30, true),
             new MenuItemRecord(AuthService.MENU_ASSIGN_LOGS, "BUSINESS", "业务", "分配日志", "查看领取、释放、转派和抢单冲突记录", "/assign-logs", 35, true),
             new MenuItemRecord(AuthService.MENU_DEALS, "BUSINESS", "业务", "成交记录", "登记、编辑、退单成交数据", "/deals", 40, true),
+            new MenuItemRecord(AuthService.MENU_THIRD_PARTY_POOL, "BUSINESS", "业务", "三方下载池", "临时给第三方下载 Word 客资", "/third-party-pool", 45, true),
             new MenuItemRecord(AuthService.MENU_STATS, "MANAGE", "管理", "数据统计", "团队数据统计面板", "/index", 10, true),
             new MenuItemRecord(AuthService.MENU_PERFORMANCE, "MANAGE", "管理", "员工绩效", "员工绩效和明细查询", "/performance", 20, true),
             new MenuItemRecord(AuthService.MENU_OPERATION_LOGS, "MANAGE", "管理", "操作日志", "查看客户字段修改前后记录", "/operation-logs", 25, true),
@@ -93,11 +94,21 @@ public class MenuService {
 
     private List<MenuItemRecord> readAll() {
         List<MenuItemRecord> rows = menuRepository.readMenus();
-        if (rows.isEmpty()) {
-            writeAll(DEFAULT_MENUS);
+        if (rows == null || rows.isEmpty()) {
+            menuRepository.writeMenus(DEFAULT_MENUS);
             return DEFAULT_MENUS;
         }
-        return rows;
+        Map<String, MenuItemRecord> savedMap = rows.stream()
+                .collect(Collectors.toMap(MenuItemRecord::code, Function.identity(), (left, right) -> left));
+        boolean missing = DEFAULT_MENUS.stream().anyMatch(item -> !savedMap.containsKey(item.code()));
+        if (!missing) {
+            return rows;
+        }
+        List<MenuItemRecord> merged = DEFAULT_MENUS.stream()
+                .map(item -> savedMap.getOrDefault(item.code(), item))
+                .toList();
+        menuRepository.writeMenus(merged);
+        return merged;
     }
 
     private void writeAll(List<MenuItemRecord> rows) {

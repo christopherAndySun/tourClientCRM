@@ -85,12 +85,14 @@ const filters = reactive({ customerCode: '', operator: '', field: '' })
 const dateRange = ref(defaultMonthRange())
 const fieldOptions = [
   { label: '来源平台', value: 'sourcePlatform' },
+  { label: '添加方式', value: 'addMethod' },
   { label: '客户联系方式', value: 'contactInfo' },
   { label: '是否有微信号', value: 'hasWechatId' },
   { label: '当前状态', value: 'status' },
   { label: '销售归属', value: 'assignedSales' },
   { label: '备注', value: 'remark' },
   { label: '定金金额', value: 'depositAmount' },
+  { label: '剩余尾款', value: 'remainingBalance' },
   { label: '状态备注', value: 'statusRemark' },
   { label: '抖音截图数量', value: 'douyinImages' },
   { label: '微信截图数量', value: 'wechatImages' },

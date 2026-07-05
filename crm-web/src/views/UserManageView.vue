@@ -7,7 +7,7 @@
 
     <el-alert
       class="manage-tip"
-      title="账号基础信息和菜单权限分开维护。新增账号会按岗位默认勾选菜单，后续可在列表中单独配置。"
+      title="账号基础信息和菜单权限分开维护。分公司目前仅用于运营人员，销售账号默认接收全部来源数据。"
       type="info"
       :closable="false"
       show-icon
@@ -15,18 +15,21 @@
 
     <div class="panel desktop-table">
       <el-table :data="users" width="100%" v-loading="loading">
-        <el-table-column prop="name" label="姓名" min-width="120" />
-        <el-table-column prop="employeeCode" label="员工编号" min-width="120" />
-        <el-table-column label="角色" min-width="110">
+        <el-table-column prop="name" label="姓名" min-width="110" />
+        <el-table-column prop="employeeCode" label="员工编号" min-width="110" />
+        <el-table-column label="角色" min-width="90">
           <template #default="{ row }">{{ roleText(row.role) }}</template>
         </el-table-column>
-        <el-table-column label="岗位" min-width="110">
+        <el-table-column label="岗位" min-width="90">
           <template #default="{ row }">{{ positionText(row.position) }}</template>
+        </el-table-column>
+        <el-table-column label="组织归属" min-width="170">
+          <template #default="{ row }">{{ orgText(row) }}</template>
         </el-table-column>
         <el-table-column label="直属组长" min-width="120">
           <template #default="{ row }">{{ row.leaderEmployeeCode || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" min-width="160" />
+        <el-table-column prop="createdAt" label="创建时间" min-width="150" />
         <el-table-column label="操作" width="230" fixed="right">
           <template #default="{ row }">
             <TextActions>
@@ -46,7 +49,8 @@
           <strong>{{ user.name }}</strong>
           <span>{{ user.employeeCode }}</span>
         </div>
-        <small>{{ roleText(user.role) }} · {{ positionText(user.position) }} · 组长：{{ user.leaderEmployeeCode || '-' }}</small>
+        <small>{{ roleText(user.role) }} · {{ positionText(user.position) }} · {{ orgText(user) }}</small>
+        <small>组长：{{ user.leaderEmployeeCode || '-' }}</small>
         <TextActions class="card-actions">
           <button class="table-action" type="button" @click="openEditDialog(user)">编辑</button>
           <button class="table-action" type="button" @click="openPermissionDialog(user)">菜单权限</button>
@@ -57,7 +61,7 @@
       <AppPagination v-model:current-page="page.current" v-model:page-size="page.size" compact :total="total" />
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑员工账号' : '新增员工账号'" width="min(560px, 92vw)" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑员工账号' : '新增员工账号'" width="min(620px, 94vw)" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <el-form-item label="姓名" prop="name">
           <el-input v-model="form.name" placeholder="可填写中文、英文或数字" />
@@ -66,7 +70,7 @@
           <el-input
             v-model="form.employeeCode"
             :disabled="isEdit"
-            placeholder="2-5 位大写字母，例如 XB"
+            placeholder="2-5 位大写字母，例如 XA、HA"
             @input="form.employeeCode = form.employeeCode.toUpperCase()"
           />
         </el-form-item>
@@ -81,13 +85,27 @@
           </el-select>
         </el-form-item>
         <el-form-item label="岗位" prop="position">
-          <el-select v-model="form.position" class="full-field" @change="applyDefaultMenus">
+          <el-select v-model="form.position" class="full-field" :disabled="form.employeeCode === 'ADMIN'" @change="handlePositionChange">
             <el-option label="运营" value="OPERATION" />
             <el-option label="销售" value="SALES" />
           </el-select>
         </el-form-item>
+        <el-form-item label="所属组织" prop="orgType">
+          <el-radio-group v-model="form.orgType" :disabled="form.position === 'SALES' || form.employeeCode === 'ADMIN'" @change="handleOrgChange">
+            <el-radio-button label="HEADQUARTERS">本部</el-radio-button>
+            <el-radio-button label="BRANCH">分公司</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <div v-if="form.orgType === 'BRANCH'" class="branch-grid">
+          <el-form-item label="分公司ID" prop="branchId">
+            <el-input v-model="form.branchId" placeholder="例如 HA_GROUP" @input="form.branchId = form.branchId.toUpperCase()" />
+          </el-form-item>
+          <el-form-item label="分公司名称" prop="branchName">
+            <el-input v-model="form.branchName" placeholder="例如 杭州分公司" />
+          </el-form-item>
+        </div>
         <el-form-item v-if="form.role === 'EMPLOYEE'" label="直属组长">
-          <el-select v-model="form.leaderEmployeeCode" class="full-field" clearable placeholder="可选择直属组长">
+          <el-select v-model="form.leaderEmployeeCode" class="full-field" clearable placeholder="可选择同岗位、同组织组长">
             <el-option
               v-for="leader in leaderOptions"
               :key="leader.employeeCode"
@@ -108,7 +126,7 @@
       <div v-if="permissionUser" class="permission-dialog">
         <div class="permission-user">
           <strong>{{ permissionUser.name }}</strong>
-          <span>{{ permissionUser.employeeCode }} · {{ roleText(permissionUser.role) }} · {{ positionText(permissionUser.position) }}</span>
+          <span>{{ permissionUser.employeeCode }} · {{ roleText(permissionUser.role) }} · {{ positionText(permissionUser.position) }} · {{ orgText(permissionUser) }}</span>
         </div>
 
         <el-alert
@@ -181,21 +199,14 @@ const isEdit = ref(false)
 const formRef = ref()
 const permissionUser = ref(null)
 
-const form = reactive({
-  name: '',
-  employeeCode: '',
-  password: '',
-  role: 'EMPLOYEE',
-  position: 'OPERATION',
-  leaderEmployeeCode: '',
-  menuPermissions: []
-})
+const form = reactive(defaultForm())
+const permissionForm = reactive({ menuPermissions: [] })
 
-const permissionForm = reactive({
-  menuPermissions: []
-})
-
-const leaderOptions = computed(() => leaders.value.filter((leader) => leader.employeeCode !== form.employeeCode))
+const leaderOptions = computed(() => leaders.value.filter((leader) => {
+  if (leader.employeeCode === form.employeeCode) return false
+  if (leader.position !== form.position) return false
+  return sameOrg(leader, form)
+}))
 
 const rules = computed(() => ({
   name: [{ required: true, message: '请填写姓名', trigger: 'blur' }],
@@ -210,7 +221,17 @@ const rules = computed(() => ({
         { min: 6, message: '密码至少 6 位', trigger: 'blur' }
       ],
   role: [{ required: true, message: '请选择角色', trigger: 'change' }],
-  position: [{ required: true, message: '请选择岗位', trigger: 'change' }]
+  position: [{ required: true, message: '请选择岗位', trigger: 'change' }],
+  orgType: [{ required: true, message: '请选择所属组织', trigger: 'change' }],
+  branchId: form.orgType === 'BRANCH'
+    ? [
+        { required: true, message: '请填写分公司ID', trigger: 'blur' },
+        { pattern: /^[A-Z0-9_-]{1,32}$/, message: '分公司ID只能包含字母、数字、下划线或短横线', trigger: 'blur' }
+      ]
+    : [],
+  branchName: form.orgType === 'BRANCH'
+    ? [{ required: true, message: '请填写分公司名称', trigger: 'blur' }]
+    : []
 }))
 
 async function fetchUsers() {
@@ -241,15 +262,24 @@ async function fetchMenus() {
   }
 }
 
-function openCreateDialog() {
-  isEdit.value = false
-  Object.assign(form, {
+function defaultForm() {
+  return {
     name: '',
     employeeCode: '',
     password: '',
     role: 'EMPLOYEE',
     position: 'OPERATION',
     leaderEmployeeCode: '',
+    orgType: 'HEADQUARTERS',
+    branchId: '',
+    branchName: '',
+    menuPermissions: []
+  }
+}
+
+function openCreateDialog() {
+  isEdit.value = false
+  Object.assign(form, defaultForm(), {
     menuPermissions: [...DEFAULT_MENUS.OPERATION]
   })
   dialogVisible.value = true
@@ -264,8 +294,16 @@ function openEditDialog(user) {
     role: user.role,
     position: user.position,
     leaderEmployeeCode: user.leaderEmployeeCode || '',
+    orgType: user.orgType || 'HEADQUARTERS',
+    branchId: user.branchId || '',
+    branchName: user.branchName || '',
     menuPermissions: normalizeUserMenus(user)
   })
+  if (form.position === 'SALES' || form.employeeCode === 'ADMIN') {
+    form.orgType = 'HEADQUARTERS'
+    form.branchId = ''
+    form.branchName = ''
+  }
   dialogVisible.value = true
 }
 
@@ -279,6 +317,9 @@ function handleRoleChange() {
   if (form.role === 'ADMIN') {
     form.menuPermissions = [...ALL_MENUS.value]
     form.leaderEmployeeCode = ''
+    form.orgType = 'HEADQUARTERS'
+    form.branchId = ''
+    form.branchName = ''
     return
   }
   if (form.role !== 'EMPLOYEE') {
@@ -286,6 +327,24 @@ function handleRoleChange() {
   }
   if (!isEdit.value) {
     applyDefaultMenus()
+  }
+}
+
+function handlePositionChange() {
+  if (form.position === 'SALES') {
+    form.orgType = 'HEADQUARTERS'
+    form.branchId = ''
+    form.branchName = ''
+  }
+  form.leaderEmployeeCode = ''
+  applyDefaultMenus()
+}
+
+function handleOrgChange() {
+  form.leaderEmployeeCode = ''
+  if (form.orgType === 'HEADQUARTERS') {
+    form.branchId = ''
+    form.branchName = ''
   }
 }
 
@@ -305,15 +364,7 @@ async function submit() {
 
   saving.value = true
   try {
-    const payload = {
-      name: form.name.trim(),
-      employeeCode: form.employeeCode.trim().toUpperCase(),
-      password: form.password,
-      role: form.role,
-      position: form.position,
-      leaderEmployeeCode: form.role === 'EMPLOYEE' ? form.leaderEmployeeCode : null,
-      menuPermissions: form.role === 'ADMIN' ? [...ALL_MENUS.value] : form.menuPermissions
-    }
+    const payload = buildUserPayload(form)
     if (isEdit.value) {
       await updateUser(form.employeeCode, payload)
       ElMessage.success('账号已更新')
@@ -337,11 +388,8 @@ async function submitPermissions() {
   try {
     const user = permissionUser.value
     await updateUser(user.employeeCode, {
-      name: user.name,
+      ...buildUserPayload(user),
       password: '',
-      role: user.role,
-      position: user.position,
-      leaderEmployeeCode: user.leaderEmployeeCode,
       menuPermissions: user.role === 'ADMIN' ? [...ALL_MENUS.value] : permissionForm.menuPermissions
     })
     ElMessage.success('菜单权限已保存')
@@ -373,6 +421,22 @@ async function removeUser(user) {
     if (error !== 'cancel' && error !== 'close') {
       await showError(error.message || '删除失败')
     }
+  }
+}
+
+function buildUserPayload(source) {
+  const orgType = source.position === 'SALES' || source.role === 'ADMIN' ? 'HEADQUARTERS' : source.orgType
+  return {
+    name: source.name.trim(),
+    employeeCode: source.employeeCode.trim().toUpperCase(),
+    password: source.password || '',
+    role: source.role,
+    position: source.position,
+    leaderEmployeeCode: source.role === 'EMPLOYEE' ? source.leaderEmployeeCode : null,
+    orgType,
+    branchId: orgType === 'BRANCH' ? source.branchId.trim().toUpperCase() : null,
+    branchName: orgType === 'BRANCH' ? source.branchName.trim() : null,
+    menuPermissions: source.role === 'ADMIN' ? [...ALL_MENUS.value] : source.menuPermissions
   }
 }
 
@@ -410,6 +474,21 @@ function positionText(position) {
   }[position] || position
 }
 
+function orgText(user) {
+  if (user.orgType === 'BRANCH') {
+    return `${user.branchName || '分公司'}（${user.branchId || '-'}）`
+  }
+  return '本部'
+}
+
+function sameOrg(user, target) {
+  const userType = user.orgType || 'HEADQUARTERS'
+  const targetType = target.orgType || 'HEADQUARTERS'
+  if (userType !== targetType) return false
+  if (userType !== 'BRANCH') return true
+  return (user.branchId || '').toUpperCase() === (target.branchId || '').toUpperCase()
+}
+
 watch([() => page.current, () => page.size], fetchUsers)
 
 onMounted(fetchUsers)
@@ -424,19 +503,52 @@ onMounted(fetchUsers)
   width: 100%;
 }
 
+.branch-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.user-card {
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 14px;
+}
+
+.user-card > div:first-child {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.user-card span,
+.user-card small {
+  color: var(--text-muted);
+}
+
+.card-actions {
+  padding-top: 4px;
+}
+
 .permission-dialog {
   display: grid;
   gap: 14px;
 }
 
 .permission-user {
-  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(246, 245, 255, 0.9));
   border: 1px solid rgba(178, 174, 250, 0.34);
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(246, 245, 255, 0.9));
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px;
 }
 
 .permission-user strong {
@@ -455,83 +567,70 @@ onMounted(fetchUsers)
 }
 
 .permission-group {
-  padding: 16px;
+  background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(178, 174, 250, 0.34);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
+  padding: 16px;
 }
 
 .permission-group-title {
-  margin-bottom: 12px;
   color: var(--text-strong);
   font-size: 16px;
   font-weight: 800;
+  margin-bottom: 12px;
 }
 
 .permission-menu-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .permission-menu-item {
+  background: rgba(246, 245, 255, 0.72);
+  border-radius: 14px;
   display: block;
   min-height: 68px;
   padding: 12px;
-  border: 1px solid rgba(178, 174, 250, 0.32);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.78);
 }
 
 .permission-menu-item :deep(.el-checkbox) {
   align-items: flex-start;
   height: auto;
-  margin-right: 0;
+  white-space: normal;
 }
 
-.permission-menu-item :deep(.el-checkbox__label) {
-  display: grid;
-  gap: 2px;
-  line-height: 1.4;
+.permission-menu-item span {
+  color: var(--text-strong);
+  display: block;
+  font-weight: 800;
 }
 
 .permission-menu-item small {
   color: var(--text-muted);
+  display: block;
   font-size: 12px;
-}
-
-.user-card {
-  display: grid;
-  gap: 8px;
-  padding: 14px;
-}
-
-.user-card div,
-.card-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.user-card small {
-  color: var(--text-muted);
-}
-
-.text-actions {
-  justify-content: flex-start !important;
-  flex-wrap: wrap;
+  line-height: 1.5;
   margin-top: 4px;
 }
 
 @media (max-width: 760px) {
-  .permission-user {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 2px;
+  .desktop-table {
+    display: none;
+  }
+
+  .branch-grid {
+    grid-template-columns: 1fr;
   }
 
   .permission-menu-list {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 761px) {
+  .mobile-list {
+    display: none;
   }
 }
 </style>

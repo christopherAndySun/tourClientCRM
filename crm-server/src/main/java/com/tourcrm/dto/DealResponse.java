@@ -5,6 +5,7 @@ public record DealResponse(
         String customerCode,
         String customerName,
         String deposit,
+        String remainingBalance,
         String bookingDate,
         String addWechatDate,
         String quoteText,

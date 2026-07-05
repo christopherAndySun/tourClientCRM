@@ -4,6 +4,7 @@ import java.util.List;
 
 public record ClueSaveRequest(
         String sourcePlatform,
+        String addMethod,
         String contactInfo,
         Boolean hasWechatId,
         String status,
@@ -12,6 +13,7 @@ public record ClueSaveRequest(
         List<ImageFileDto> wechatImages,
         Boolean allowRepeatDemand,
         String depositAmount,
+        String remainingBalance,
         String statusRemark,
         String refundAmount,
         String refundedAt,

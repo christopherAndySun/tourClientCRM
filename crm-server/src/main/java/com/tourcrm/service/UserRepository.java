@@ -8,6 +8,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,19 +24,10 @@ public class UserRepository {
 
     public List<UserRecord> readUsers() {
         return jdbcTemplate.query("""
-                SELECT employee_code, name, password, role, position, leader_employee_code, created_at_text
+                SELECT employee_code, name, password, role, position, leader_employee_code, org_type, branch_id, branch_name, created_at_text
                 FROM crm_users
                 ORDER BY created_at_text DESC
-                """, (rs, rowNum) -> new UserRecord(
-                rs.getString("name"),
-                rs.getString("employee_code"),
-                rs.getString("password"),
-                rs.getString("role"),
-                rs.getString("position"),
-                rs.getString("leader_employee_code"),
-                readUserMenus(rs.getString("employee_code")),
-                rs.getString("created_at_text")
-        ));
+                """, (rs, rowNum) -> readUserRow(rs));
     }
 
     public PageResponse<UserRecord> queryUsersPage(Integer page, Integer pageSize) {
@@ -42,21 +35,12 @@ public class UserRepository {
         int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
         long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM crm_users", Long.class);
         List<UserRecord> rows = jdbcTemplate.query("""
-                        SELECT employee_code, name, password, role, position, leader_employee_code, created_at_text
+                        SELECT employee_code, name, password, role, position, leader_employee_code, org_type, branch_id, branch_name, created_at_text
                         FROM crm_users
                         ORDER BY created_at_text DESC, employee_code ASC
                         LIMIT ?, ?
                         """,
-                (rs, rowNum) -> new UserRecord(
-                        rs.getString("name"),
-                        rs.getString("employee_code"),
-                        rs.getString("password"),
-                        rs.getString("role"),
-                        rs.getString("position"),
-                        rs.getString("leader_employee_code"),
-                        readUserMenus(rs.getString("employee_code")),
-                        rs.getString("created_at_text")
-                ),
+                (rs, rowNum) -> readUserRow(rs),
                 (safePage - 1) * safePageSize,
                 safePageSize);
         return new PageResponse<>(rows, total, safePage, safePageSize, (long) safePage * safePageSize < total);
@@ -68,20 +52,11 @@ public class UserRepository {
         }
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject("""
-                            SELECT employee_code, name, password, role, position, leader_employee_code, created_at_text
+                            SELECT employee_code, name, password, role, position, leader_employee_code, org_type, branch_id, branch_name, created_at_text
                             FROM crm_users
                             WHERE employee_code = ?
                             """,
-                    (rs, rowNum) -> new UserRecord(
-                            rs.getString("name"),
-                            rs.getString("employee_code"),
-                            rs.getString("password"),
-                            rs.getString("role"),
-                            rs.getString("position"),
-                            rs.getString("leader_employee_code"),
-                            readUserMenus(rs.getString("employee_code")),
-                            rs.getString("created_at_text")
-                    ),
+                    (rs, rowNum) -> readUserRow(rs),
                     employeeCode));
         } catch (EmptyResultDataAccessException error) {
             return Optional.empty();
@@ -103,17 +78,21 @@ public class UserRepository {
     @Transactional
     public void writeUser(UserRecord row) {
         jdbcTemplate.update("""
-                        INSERT INTO crm_users (employee_code, name, password, role, position, leader_employee_code, created_at_text)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO crm_users (employee_code, name, password, role, position, leader_employee_code, org_type, branch_id, branch_name, created_at_text)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE
                           name = VALUES(name),
                           password = VALUES(password),
                           role = VALUES(role),
                           position = VALUES(position),
                           leader_employee_code = VALUES(leader_employee_code),
+                          org_type = VALUES(org_type),
+                          branch_id = VALUES(branch_id),
+                          branch_name = VALUES(branch_name),
                           created_at_text = VALUES(created_at_text)
                         """,
-                row.employeeCode(), row.name(), row.password(), row.role(), row.position(), row.leaderEmployeeCode(), row.createdAt());
+                row.employeeCode(), row.name(), row.password(), row.role(), row.position(), row.leaderEmployeeCode(),
+                row.orgType(), row.branchId(), row.branchName(), row.createdAt());
         replaceUserMenus(row.employeeCode(), row.menuPermissions());
     }
 
@@ -141,5 +120,22 @@ public class UserRepository {
         for (String menuCode : menuPermissions) {
             jdbcTemplate.update("INSERT IGNORE INTO crm_user_menu_permissions (employee_code, menu_code) VALUES (?, ?)", employeeCode, menuCode);
         }
+    }
+
+    private UserRecord readUserRow(ResultSet rs) throws SQLException {
+        String employeeCode = rs.getString("employee_code");
+        return new UserRecord(
+                rs.getString("name"),
+                employeeCode,
+                rs.getString("password"),
+                rs.getString("role"),
+                rs.getString("position"),
+                rs.getString("leader_employee_code"),
+                rs.getString("org_type"),
+                rs.getString("branch_id"),
+                rs.getString("branch_name"),
+                readUserMenus(employeeCode),
+                rs.getString("created_at_text")
+        );
     }
 }

@@ -5,12 +5,14 @@ import com.alibaba.excel.annotation.ExcelProperty;
 public class ClueExportRow {
     @ExcelProperty("客户编号") private final String customerCode;
     @ExcelProperty("来源平台") private final String sourcePlatform;
+    @ExcelProperty("添加方式") private final String addMethod;
     @ExcelProperty("联系方式") private final String contactInfo;
     @ExcelProperty("上传人") private final String uploader;
     @ExcelProperty("分配销售") private final String assignedSales;
     @ExcelProperty("分配销售工号") private final String assignedSalesEmployeeCode;
     @ExcelProperty("当前状态") private final String status;
     @ExcelProperty("定金金额") private final String depositAmount;
+    @ExcelProperty("剩余尾款") private final String remainingBalance;
     @ExcelProperty("状态备注") private final String statusRemark;
     @ExcelProperty("退单金额") private final String refundAmount;
     @ExcelProperty("退款时间") private final String refundedAt;
@@ -28,12 +30,14 @@ public class ClueExportRow {
     public ClueExportRow(ClueResponse clue) {
         this.customerCode = clue.customerCode();
         this.sourcePlatform = sourcePlatformText(clue.sourcePlatform());
+        this.addMethod = addMethodText(clue.addMethod());
         this.contactInfo = clue.contactInfo();
         this.uploader = clue.uploader();
         this.assignedSales = clue.assignedSales();
         this.assignedSalesEmployeeCode = clue.assignedSalesEmployeeCode();
         this.status = statusText(clue.status());
         this.depositAmount = clue.depositAmount();
+        this.remainingBalance = clue.remainingBalance();
         this.statusRemark = clue.statusRemark();
         this.refundAmount = clue.refundAmount();
         this.refundedAt = clue.refundedAt();
@@ -48,16 +52,19 @@ public class ClueExportRow {
         this.createdAt = clue.createdAt();
         this.updatedAt = clue.updatedAt();
     }
-    private String statusText(String status) { return switch (status) { case "NEW" -> "新录入"; case "FOLLOWING", "TO_DEAL" -> "跟进中"; case "DEPOSIT_PAID", "DEALED" -> "已交定金"; case "INVALID" -> "无效用户"; case "REFUNDED" -> "退单"; case "LANDED" -> "已落地"; default -> status; }; }
+    private String statusText(String status) { return switch (status) { case "NEW" -> "新录入"; case "FOLLOWING", "TO_DEAL" -> "跟进中"; case "PASSED" -> "已通过"; case "DEPOSIT_PAID", "DEALED" -> "已交定金"; case "INVALID" -> "无效用户"; case "REFUNDED" -> "退单"; case "LANDED" -> "已落地"; default -> status; }; }
     private String sourcePlatformText(String sourcePlatform) { return switch (sourcePlatform) { case "XIAOHONGSHU" -> "小红书"; default -> "抖音"; }; }
+    private String addMethodText(String addMethod) { return switch (addMethod) { case "PASSIVE" -> "被动"; case "GUIDE" -> "领队"; default -> "主动"; }; }
     public String getCustomerCode() { return customerCode; }
     public String getSourcePlatform() { return sourcePlatform; }
+    public String getAddMethod() { return addMethod; }
     public String getContactInfo() { return contactInfo; }
     public String getUploader() { return uploader; }
     public String getAssignedSales() { return assignedSales; }
     public String getAssignedSalesEmployeeCode() { return assignedSalesEmployeeCode; }
     public String getStatus() { return status; }
     public String getDepositAmount() { return depositAmount; }
+    public String getRemainingBalance() { return remainingBalance; }
     public String getStatusRemark() { return statusRemark; }
     public String getRefundAmount() { return refundAmount; }
     public String getRefundedAt() { return refundedAt; }

@@ -30,6 +30,9 @@ export const useAuthStore = defineStore('auth', {
         role: data.role,
         position: data.position,
         leaderEmployeeCode: data.leaderEmployeeCode,
+        orgType: data.orgType,
+        branchId: data.branchId,
+        branchName: data.branchName,
         menuPermissions: data.menuPermissions || []
       }
       setSessionStorage(this.token, this.user, data.expiresAt)

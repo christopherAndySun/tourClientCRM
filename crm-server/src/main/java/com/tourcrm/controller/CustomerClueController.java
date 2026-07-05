@@ -50,6 +50,7 @@ public class CustomerClueController {
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String contactInfo,
             @RequestParam(required = false) String sourcePlatform,
+            @RequestParam(required = false) String addMethod,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String uploader,
             @RequestParam(required = false) String assignedSales,
@@ -59,7 +60,7 @@ public class CustomerClueController {
             @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.listPage(keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, page, pageSize, token));
+        return ApiResponse.ok(customerClueService.listPage(keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/sales-pool/public")
@@ -68,6 +69,7 @@ public class CustomerClueController {
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String contactInfo,
             @RequestParam(required = false) String sourcePlatform,
+            @RequestParam(required = false) String addMethod,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String assignedSales,
             @RequestParam(required = false) String startDate,
@@ -76,7 +78,7 @@ public class CustomerClueController {
             @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.publicSalesPoolPage(keyword, customerCode, contactInfo, sourcePlatform, status, assignedSales, startDate, endDate, page, pageSize, token));
+        return ApiResponse.ok(customerClueService.publicSalesPoolPage(keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, assignedSales, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/sales-pool/mine")
@@ -85,6 +87,7 @@ public class CustomerClueController {
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String contactInfo,
             @RequestParam(required = false) String sourcePlatform,
+            @RequestParam(required = false) String addMethod,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String assignedSales,
             @RequestParam(required = false) String startDate,
@@ -93,7 +96,7 @@ public class CustomerClueController {
             @RequestParam(required = false) Integer pageSize,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(customerClueService.mySalesPoolPage(keyword, customerCode, contactInfo, sourcePlatform, status, assignedSales, startDate, endDate, page, pageSize, token));
+        return ApiResponse.ok(customerClueService.mySalesPoolPage(keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, assignedSales, startDate, endDate, page, pageSize, token));
     }
 
     @GetMapping("/assign-logs")
@@ -131,6 +134,7 @@ public class CustomerClueController {
             @RequestParam(required = false) String customerCode,
             @RequestParam(required = false) String contactInfo,
             @RequestParam(required = false) String sourcePlatform,
+            @RequestParam(required = false) String addMethod,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String uploader,
             @RequestParam(required = false) String assignedSales,
@@ -144,7 +148,7 @@ public class CustomerClueController {
         response.setCharacterEncoding("utf-8");
         response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + fileName);
 
-        List<ClueExportRow> rows = customerClueService.listForExport(keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, token).stream()
+        List<ClueExportRow> rows = customerClueService.listForExport(keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, token).stream()
                 .map(ClueExportRow::new)
                 .toList();
         EasyExcel.write(response.getOutputStream(), ClueExportRow.class).sheet("客户线索").doWrite(rows);

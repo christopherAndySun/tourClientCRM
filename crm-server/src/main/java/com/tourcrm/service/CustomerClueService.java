@@ -43,65 +43,91 @@ public class CustomerClueService {
 
     private static final DateTimeFormatter DATE_CODE_FORMAT = DateTimeFormatter.ofPattern("MMdd");
     private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    private static final Set<String> STATUSES = Set.of("NEW", "FOLLOWING", "INVALID", "DEPOSIT_PAID", "REFUNDED", "LANDED", "DELETED");
+    private static final Set<String> STATUSES = Set.of("NEW", "FOLLOWING", "PASSED", "INVALID", "DEPOSIT_PAID", "REFUNDED", "LANDED", "DELETED");
     private static final Set<String> SOURCE_PLATFORMS = Set.of("DOUYIN", "XIAOHONGSHU");
+    private static final Set<String> ADD_METHODS = Set.of("ACTIVE", "PASSIVE", "GUIDE");
     private final AuthService authService;
     private final DatabaseStore databaseStore;
+    private final RealtimeEventService realtimeEventService;
 
     public CustomerClueService(
             AuthService authService,
-            DatabaseStore databaseStore
+            DatabaseStore databaseStore,
+            RealtimeEventService realtimeEventService
     ) {
         this.authService = authService;
         this.databaseStore = databaseStore;
+        this.realtimeEventService = realtimeEventService;
     }
 
-    public PageResponse<ClueResponse> publicSalesPoolPage(String keyword, String customerCode, String contactInfo, String sourcePlatform, String status, String assignedSales, String startDate, String endDate, Integer page, Integer pageSize, String token) {
+    public PageResponse<ClueResponse> publicSalesPoolPage(String keyword, String customerCode, String contactInfo, String sourcePlatform, String addMethod, String status, String assignedSales, String startDate, String endDate, Integer page, Integer pageSize, String token) {
         ensureAssignPermission(token);
         UserSession currentUser = authService.currentUser(token);
         Map<String, UserRecord> usersByCode = userMap(authService.listAllUsersForSystem());
         boolean unrestricted = "ADMIN".equals(currentUser.role()) || "SALES".equals(currentUser.position());
         List<String> visibleUploaderCodes = unrestricted ? null : publicSalesPoolUploaderCodes(currentUser, usersByCode);
-        return databaseStore.queryPublicSalesPoolPage(visibleUploaderCodes, unrestricted, keyword, customerCode, contactInfo, sourcePlatform, status, startDate, endDate, page, pageSize);
+        return databaseStore.queryPublicSalesPoolPage(visibleUploaderCodes, unrestricted, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, startDate, endDate, page, pageSize);
     }
 
-    public PageResponse<ClueResponse> listPage(String keyword, String customerCode, String contactInfo, String sourcePlatform, String status, String uploader, String assignedSales, String startDate, String endDate, Integer page, Integer pageSize, String token) {
+    public PageResponse<ClueResponse> listPage(String keyword, String customerCode, String contactInfo, String sourcePlatform, String addMethod, String status, String uploader, String assignedSales, String startDate, String endDate, Integer page, Integer pageSize, String token) {
         UserSession currentUser = authService.currentUser(token);
         Map<String, UserRecord> usersByCode = userMap(authService.listAllUsersForSystem());
         List<String> visibleUploaderCodes = workspaceUploaderCodes(currentUser, usersByCode);
         String visibleSalesCode = "SALES".equals(currentUser.position()) ? currentUser.employeeCode() : null;
-        return databaseStore.queryClueListPage(visibleUploaderCodes, visibleSalesCode, keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, page, pageSize);
+        return databaseStore.queryClueListPage(visibleUploaderCodes, visibleSalesCode, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, page, pageSize);
     }
 
-    public List<ClueResponse> listForExport(String keyword, String customerCode, String contactInfo, String sourcePlatform, String status, String uploader, String assignedSales, String startDate, String endDate, String token) {
+    public List<ClueResponse> listForExport(String keyword, String customerCode, String contactInfo, String sourcePlatform, String addMethod, String status, String uploader, String assignedSales, String startDate, String endDate, String token) {
         UserSession currentUser = authService.currentUser(token);
         Map<String, UserRecord> usersByCode = userMap(authService.listAllUsersForSystem());
         List<String> visibleUploaderCodes = workspaceUploaderCodes(currentUser, usersByCode);
         String visibleSalesCode = "SALES".equals(currentUser.position()) ? currentUser.employeeCode() : null;
-        return databaseStore.queryClueListForExport(visibleUploaderCodes, visibleSalesCode, keyword, customerCode, contactInfo, sourcePlatform, status, uploader, assignedSales, startDate, endDate, 50000);
+        return databaseStore.queryClueListForExport(visibleUploaderCodes, visibleSalesCode, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, 50000);
     }
 
-    public PageResponse<ClueResponse> mySalesPoolPage(String keyword, String customerCode, String contactInfo, String sourcePlatform, String status, String assignedSales, String startDate, String endDate, Integer page, Integer pageSize, String token) {
+    public PageResponse<ClueResponse> mySalesPoolPage(String keyword, String customerCode, String contactInfo, String sourcePlatform, String addMethod, String status, String assignedSales, String startDate, String endDate, Integer page, Integer pageSize, String token) {
         UserSession currentUser = authService.currentUser(token);
         if (!"ADMIN".equals(currentUser.role()) && !"SALES".equals(currentUser.position())) {
             throw new BusinessException("\u53ea\u6709\u7ba1\u7406\u5458\u548c\u9500\u552e\u53ef\u4ee5\u67e5\u770b\u9500\u552e\u6c60\u7ebf\u7d22");
         }
         String salesCode = "ADMIN".equals(currentUser.role()) ? clean(assignedSales).toUpperCase(Locale.ROOT) : currentUser.employeeCode();
-        return databaseStore.queryMySalesPoolPage(salesCode, keyword, customerCode, contactInfo, sourcePlatform, status, startDate, endDate, page, pageSize);
+        return databaseStore.queryMySalesPoolPage(salesCode, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, startDate, endDate, page, pageSize);
     }
 
     public PageResponse<AssignLogReportRow> assignLogReportPage(String customerCode, String action, String operator, String salesEmployeeCode, String startDate, String endDate, Integer page, Integer pageSize, String token) {
         if (!authService.hasMenuPermission(token, AuthService.MENU_ASSIGN_LOGS)) {
             throw new BusinessException("\u53ea\u6709\u7ba1\u7406\u5458\u548c\u9500\u552e\u53ef\u4ee5\u67e5\u770b\u9500\u552e\u6c60\u7ebf\u7d22");
         }
-        return databaseStore.queryAssignLogReportPage(customerCode, action, operator, salesEmployeeCode, startDate, endDate, page, pageSize);
+        UserSession currentUser = authService.currentUser(token);
+        List<String> visibleUploaderCodes = null;
+        List<String> visibleSalesCodes = null;
+        if (!"ADMIN".equals(currentUser.role())) {
+            List<String> visibleCodes = businessVisibleUsers(token).stream().map(UserRecord::employeeCode).toList();
+            if ("SALES".equals(currentUser.position())) {
+                visibleSalesCodes = visibleCodes;
+            } else {
+                visibleUploaderCodes = visibleCodes;
+            }
+        }
+        return databaseStore.queryAssignLogReportPage(visibleUploaderCodes, visibleSalesCodes, customerCode, action, operator, salesEmployeeCode, startDate, endDate, page, pageSize);
     }
 
     public PageResponse<OperationLogReportRow> operationLogReportPage(String customerCode, String operator, String field, String startDate, String endDate, Integer page, Integer pageSize, String token) {
         if (!authService.hasMenuPermission(token, AuthService.MENU_OPERATION_LOGS)) {
             throw new BusinessException("\u53ea\u6709\u7ba1\u7406\u5458\u548c\u9500\u552e\u53ef\u4ee5\u67e5\u770b\u9500\u552e\u6c60\u7ebf\u7d22");
         }
-        return databaseStore.queryOperationLogReportPage(customerCode, operator, field, startDate, endDate, page, pageSize);
+        UserSession currentUser = authService.currentUser(token);
+        List<String> visibleUploaderCodes = null;
+        List<String> visibleSalesCodes = null;
+        if (!"ADMIN".equals(currentUser.role())) {
+            List<String> visibleCodes = businessVisibleUsers(token).stream().map(UserRecord::employeeCode).toList();
+            if ("SALES".equals(currentUser.position())) {
+                visibleSalesCodes = visibleCodes;
+            } else {
+                visibleUploaderCodes = visibleCodes;
+            }
+        }
+        return databaseStore.queryOperationLogReportPage(visibleUploaderCodes, visibleSalesCodes, customerCode, operator, field, startDate, endDate, page, pageSize);
     }
 
     public ClueStatsResponse stats(String startDate, String endDate, String token) {
@@ -194,6 +220,7 @@ public class CustomerClueService {
     public ClueResponse create(ClueSaveRequest request, String token) {
         UserSession currentUser = authService.currentUser(token);
         String normalizedContact = normalizeContact(request.contactInfo());
+        databaseStore.acquireContactLock(normalizedContact);
         List<ClueResponse> sameContactRows = StringUtils.hasText(normalizedContact)
                 ? databaseStore.findCluesByContactKey(normalizedContact).stream()
                 .map(this::normalizeClue)
@@ -205,12 +232,13 @@ public class CustomerClueService {
         }
 
         String status = normalizeStatus(request.status(), "NEW");
+        ensureFinalStatusHasDepositFlow(null, status);
         String now = nowText();
         boolean repeatDemand = !sameContactRows.isEmpty();
         String originalCustomerCode = repeatDemand ? rootCustomerCode(sameContactRows.get(0)) : null;
         int demandSequence = repeatDemand ? sameContactRows.size() + 1 : 1;
-        int sequence = nextCustomerSequence();
         for (int attempt = 0; attempt < 30; attempt++) {
+            int sequence = nextCustomerSequence(currentUser);
             ClueResponse clue = buildNewClue(
                     request,
                     currentUser,
@@ -219,10 +247,12 @@ public class CustomerClueService {
                     originalCustomerCode,
                     demandSequence,
                     now,
-                    createCustomerCode(currentUser.employeeCode(), sequence + attempt)
+                    createCustomerCode(currentUser.employeeCode(), sequence)
             );
             if (databaseStore.insertClue(clue)) {
-                return findByCustomerCodeForSystem(clue.customerCode()).orElse(clue);
+                ClueResponse saved = findByCustomerCodeForSystem(clue.customerCode()).orElse(clue);
+                publishClueCreated(saved);
+                return saved;
             }
         }
         throw new BusinessException("客户编号生成冲突，请稍后重试");
@@ -231,18 +261,24 @@ public class CustomerClueService {
     @Transactional
     public Optional<ClueResponse> update(String customerCode, ClueSaveRequest request, String token) {
         UserSession currentUser = authService.currentUser(token);
+        databaseStore.acquireContactLock(normalizeContact(request.contactInfo()));
         ensureUniqueContactOnUpdate(request.contactInfo(), customerCode);
-        Optional<ClueResponse> oldOptional = findMutableClue(customerCode);
+        Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
             String status = normalizeStatus(request.status(), old.status());
+            ensureFinalStatusHasDepositFlow(old, status);
             ClueResponse updated = new ClueResponse(
                     old.customerCode(),
                     normalizeSourcePlatform(request.sourcePlatform(), old.sourcePlatform()),
+                    normalizeAddMethod(request.addMethod(), old.addMethod()),
                     clean(request.contactInfo()),
                     hasWechatId(request.hasWechatId()),
                     old.uploader(),
                     old.uploaderEmployeeCode(),
+                    old.orgType(),
+                    old.branchId(),
+                    old.branchName(),
                     status,
                     StringUtils.hasText(request.remark()) ? clean(request.remark()) : old.remark(),
                     safeImages(request.douyinImages()),
@@ -253,6 +289,7 @@ public class CustomerClueService {
                     old.assignedSales(),
                     old.assignedSalesEmployeeCode(),
                     clean(request.depositAmount()),
+                    clean(request.remainingBalance()),
                     clean(request.statusRemark()),
                     clean(request.refundAmount()),
                     clean(request.refundedAt()),
@@ -266,6 +303,7 @@ public class CustomerClueService {
                     nowText()
             );
             databaseStore.writeClue(updated);
+            publishClueChanged("CLUE_UPDATED", customerCode, "\u5ba2\u8d44\u5df2\u66f4\u65b0", "\u5ba2\u6237\u7ebf\u7d22\u5df2\u66f4\u65b0");
             return findByCustomerCodeForSystem(customerCode).or(() -> Optional.of(updated));
         }
         return Optional.empty();
@@ -282,7 +320,7 @@ public class CustomerClueService {
                 .filter(user -> "SALES".equals(user.position()))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException("\u9500\u552e\u8d26\u53f7\u4e0d\u5b58\u5728"));
-        Optional<ClueResponse> oldOptional = findMutableClue(customerCode);
+        Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
             String action = StringUtils.hasText(old.assignedSalesEmployeeCode()) ? "TRANSFER" : "ASSIGN";
@@ -304,6 +342,7 @@ public class CustomerClueService {
                     operationLogs
             );
             databaseStore.writeClue(updated);
+            publishAssignChanged("ASSIGN_CHANGED", customerCode, "\u5206\u914d\u5df2\u66f4\u65b0", "\u9500\u552e\u6c60\u5206\u914d\u5df2\u66f4\u65b0");
             return Optional.of(updated);
         }
         return Optional.empty();
@@ -315,7 +354,7 @@ public class CustomerClueService {
         if (!"SALES".equals(currentUser.position())) {
             throw new BusinessException("\u53ea\u6709\u9500\u552e\u53ef\u4ee5\u9886\u53d6\u9500\u552e\u6c60\u7ebf\u7d22");
         }
-        Optional<ClueResponse> oldOptional = findMutableClue(customerCode);
+        Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
             if (StringUtils.hasText(old.assignedSalesEmployeeCode())) {
@@ -348,6 +387,7 @@ public class CustomerClueService {
                     operationLogs
             );
             databaseStore.writeClue(updated);
+            publishAssignChanged("ASSIGN_CHANGED", customerCode, "\u7ebf\u7d22\u5df2\u9886\u53d6", "\u9500\u552e\u6c60\u7ebf\u7d22\u5df2\u88ab\u9886\u53d6");
             return Optional.of(updated);
         }
         return Optional.empty();
@@ -359,7 +399,7 @@ public class CustomerClueService {
             throw new BusinessException("\u53ea\u6709\u7ba1\u7406\u5458\u548c\u9500\u552e\u53ef\u4ee5\u67e5\u770b\u9500\u552e\u6c60\u7ebf\u7d22");
         }
         UserSession currentUser = authService.currentUser(token);
-        Optional<ClueResponse> oldOptional = findMutableClue(customerCode);
+        Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
             if (!StringUtils.hasText(old.assignedSalesEmployeeCode())) {
@@ -383,6 +423,7 @@ public class CustomerClueService {
                     operationLogs
             );
             databaseStore.writeClue(updated);
+            publishAssignChanged("ASSIGN_RELEASED", customerCode, "\u7ebf\u7d22\u5df2\u91ca\u653e", "\u6709\u7ebf\u7d22\u91ca\u653e\u56de\u516c\u5171\u6c60");
             return Optional.of(updated);
         }
         return Optional.empty();
@@ -398,10 +439,11 @@ public class CustomerClueService {
         }
         UserSession currentUser = authService.currentUser(token);
         String status = normalizeStatus(request.status(), "");
-        Optional<ClueResponse> oldOptional = findMutableClue(customerCode);
+        Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
-            String depositAmount = clean(request.depositAmount());
+            ensureFinalStatusHasDepositFlow(old, status);
+            String depositAmount = StringUtils.hasText(request.depositAmount()) ? clean(request.depositAmount()) : old.depositAmount();
             String remark = clean(request.remark());
             String refundAmount = clean(request.refundAmount());
             String refundedAt = clean(request.refundedAt());
@@ -424,6 +466,7 @@ public class CustomerClueService {
                     operationLogs
             );
             databaseStore.writeClue(updated);
+            publishClueChanged("CLUE_UPDATED", customerCode, "\u72b6\u6001\u5df2\u66f4\u65b0", "\u5ba2\u6237\u72b6\u6001\u5df2\u66f4\u65b0");
             return Optional.of(updated);
         }
         return Optional.empty();
@@ -433,7 +476,7 @@ public class CustomerClueService {
     public boolean delete(String customerCode, String token) {
         UserSession operator = authService.currentUser(token);
         Map<String, UserRecord> usersByCode = userMap(authService.listAllUsersForSystem());
-        Optional<ClueResponse> oldOptional = findMutableClue(customerCode);
+        Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent() && !"DELETED".equals(oldOptional.get().status())) {
             ClueResponse old = oldOptional.get();
             if (!canViewInWorkspace(old, operator, usersByCode)) {
@@ -443,6 +486,7 @@ public class CustomerClueService {
             List<OperationLogRecord> logs = new ArrayList<>(safeOperationLogs(old));
             appendFieldLog(logs, operator, "status", "\u5f53\u524d\u72b6\u6001", statusText(old.status()), "\u5df2\u5220\u9664");
             databaseStore.writeClue(copyWithStatusAndLogs(old, "DELETED", old.assignedSales(), old.assignedSalesEmployeeCode(), old.depositAmount(), old.statusRemark(), old.refundAmount(), old.refundedAt(), old.landingAt(), old.landingRemark(), appendStatusHistory(old, record), logs));
+            publishClueChanged("CLUE_DELETED", customerCode, "\u5ba2\u8d44\u5df2\u5220\u9664", "\u5ba2\u6237\u7ebf\u7d22\u5df2\u5220\u9664");
             return true;
         }
         return false;
@@ -450,7 +494,7 @@ public class CustomerClueService {
 
     @Transactional
     void markDealed(String customerCode) {
-        Optional<ClueResponse> oldOptional = findMutableClue(customerCode);
+        Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
             StatusChangeRecord record = new StatusChangeRecord("DEPOSIT_PAID", statusText("DEPOSIT_PAID"), "\u7cfb\u7edf", "SYSTEM", old.depositAmount(), "\u6210\u4ea4\u72b6\u6001\u540c\u6b65", nowText());
@@ -463,7 +507,7 @@ public class CustomerClueService {
 
     @Transactional
     void markRefunded(String customerCode, String remark, String refundAmount, String refundedAt) {
-        Optional<ClueResponse> oldOptional = findMutableClue(customerCode);
+        Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
             String finalRemark = clean(remark);
@@ -500,10 +544,14 @@ public class CustomerClueService {
         return new ClueResponse(
                 old.customerCode(),
                 normalizeSourcePlatform(old.sourcePlatform()),
+                normalizeAddMethod(old.addMethod()),
                 old.contactInfo(),
                 hasWechatId(old.hasWechatId()),
                 old.uploader(),
                 old.uploaderEmployeeCode(),
+                old.orgType(),
+                old.branchId(),
+                old.branchName(),
                 status,
                 old.remark(),
                 old.douyinImages(),
@@ -514,6 +562,7 @@ public class CustomerClueService {
                 salesName,
                 salesCode,
                 clean(depositAmount),
+                old.remainingBalance(),
                 clean(statusRemark),
                 clean(refundAmount),
                 clean(refundedAt),
@@ -532,10 +581,14 @@ public class CustomerClueService {
         return new ClueResponse(
                 old.customerCode(),
                 normalizeSourcePlatform(old.sourcePlatform()),
+                normalizeAddMethod(old.addMethod()),
                 old.contactInfo(),
                 hasWechatId(old.hasWechatId()),
                 old.uploader(),
                 old.uploaderEmployeeCode(),
+                old.orgType(),
+                old.branchId(),
+                old.branchName(),
                 old.status(),
                 old.remark(),
                 old.douyinImages(),
@@ -546,6 +599,7 @@ public class CustomerClueService {
                 old.assignedSales(),
                 old.assignedSalesEmployeeCode(),
                 old.depositAmount(),
+                old.remainingBalance(),
                 old.statusRemark(),
                 old.refundAmount(),
                 old.refundedAt(),
@@ -637,11 +691,13 @@ public class CustomerClueService {
     private List<OperationLogRecord> operationLogsForEdit(ClueResponse old, ClueSaveRequest request, String status, UserSession operator) {
         List<OperationLogRecord> logs = new ArrayList<>(safeOperationLogs(old));
         appendFieldLog(logs, operator, "sourcePlatform", "\u6765\u6e90\u5e73\u53f0", sourcePlatformText(old.sourcePlatform()), sourcePlatformText(normalizeSourcePlatform(request.sourcePlatform(), old.sourcePlatform())));
+        appendFieldLog(logs, operator, "addMethod", "\u6dfb\u52a0\u65b9\u5f0f", addMethodText(old.addMethod()), addMethodText(normalizeAddMethod(request.addMethod(), old.addMethod())));
         appendFieldLog(logs, operator, "contactInfo", "\u5ba2\u6237\u8054\u7cfb\u65b9\u5f0f", old.contactInfo(), clean(request.contactInfo()));
         appendFieldLog(logs, operator, "hasWechatId", "\u662f\u5426\u6709\u5fae\u4fe1\u53f7", yesNoText(old.hasWechatId()), yesNoText(hasWechatId(request.hasWechatId())));
         appendFieldLog(logs, operator, "status", "\u5f53\u524d\u72b6\u6001", statusText(old.status()), statusText(status));
         appendFieldLog(logs, operator, "remark", "\u5907\u6ce8", old.remark(), StringUtils.hasText(request.remark()) ? clean(request.remark()) : old.remark());
         appendFieldLog(logs, operator, "depositAmount", "\u5b9a\u91d1\u91d1\u989d", old.depositAmount(), clean(request.depositAmount()));
+        appendFieldLog(logs, operator, "remainingBalance", "\u5269\u4f59\u5c3e\u6b3e", old.remainingBalance(), clean(request.remainingBalance()));
         appendFieldLog(logs, operator, "statusRemark", "\u72b6\u6001\u5907\u6ce8", old.statusRemark(), clean(request.statusRemark()));
         appendFieldLog(logs, operator, "douyinImages", "\u6296\u97f3\u622a\u56fe\u6570\u91cf", String.valueOf(safeImages(old.douyinImages()).size()), String.valueOf(safeImages(request.douyinImages()).size()));
         appendFieldLog(logs, operator, "wechatImages", "\u5fae\u4fe1\u622a\u56fe\u6570\u91cf", String.valueOf(safeImages(old.wechatImages()).size()), String.valueOf(safeImages(request.wechatImages()).size()));
@@ -679,7 +735,7 @@ public class CustomerClueService {
     }
 
     private UserSession systemOperator() {
-        return new UserSession("\u7cfb\u7edf", "SYSTEM", "ADMIN", "SYSTEM", "", List.of());
+        return new UserSession("\u7cfb\u7edf", "SYSTEM", "ADMIN", "SYSTEM", "", "HEADQUARTERS", null, null, List.of());
     }
 
     private void appendFieldLog(List<OperationLogRecord> logs, UserSession operator, String field, String fieldText, String oldValue, String newValue) {
@@ -737,6 +793,7 @@ public class CustomerClueService {
         return switch (status) {
             case "NEW" -> "\u65b0\u5f55\u5165";
             case "FOLLOWING", "TO_DEAL" -> "\u8ddf\u8fdb\u4e2d";
+            case "PASSED" -> "\u5df2\u901a\u8fc7";
             case "DEPOSIT_PAID", "DEALED" -> "\u5df2\u4ea4\u5b9a\u91d1";
             case "INVALID" -> "\u65e0\u6548\u7528\u6237";
             case "REFUNDED" -> "\u9000\u5355";
@@ -744,6 +801,36 @@ public class CustomerClueService {
             case "DELETED" -> "\u5df2\u5220\u9664";
             default -> status;
         };
+    }
+
+    private void publishClueCreated(ClueResponse clue) {
+        realtimeEventService.publish(
+                "CLUE_CREATED",
+                clue.customerCode(),
+                "\u65b0\u5ba2\u8d44\u5165\u5e93",
+                "\u6709\u65b0\u5ba2\u8d44\u8fdb\u5165\u7cfb\u7edf",
+                List.of(RealtimeEventService.TARGET_ASSIGN, RealtimeEventService.TARGET_THIRD_PARTY_POOL)
+        );
+    }
+
+    private void publishAssignChanged(String type, String customerCode, String title, String message) {
+        realtimeEventService.publish(
+                type,
+                customerCode,
+                title,
+                message,
+                List.of(RealtimeEventService.TARGET_ASSIGN)
+        );
+    }
+
+    private void publishClueChanged(String type, String customerCode, String title, String message) {
+        realtimeEventService.publish(
+                type,
+                customerCode,
+                title,
+                message,
+                List.of(RealtimeEventService.TARGET_ASSIGN, RealtimeEventService.TARGET_THIRD_PARTY_POOL)
+        );
     }
 
     private boolean canViewInWorkspace(ClueResponse item, UserSession currentUser, Map<String, UserRecord> usersByCode) {
@@ -867,6 +954,11 @@ public class CustomerClueService {
                 .map(this::normalizeClue);
     }
 
+    private Optional<ClueResponse> findMutableClueForUpdate(String customerCode) {
+        return databaseStore.findClueByCustomerCodeForUpdate(customerCode)
+                .map(this::normalizeClue);
+    }
+
     private String rootCustomerCode(ClueResponse clue) {
         return StringUtils.hasText(clue.originalCustomerCode()) ? clue.originalCustomerCode() : clue.customerCode();
     }
@@ -885,6 +977,32 @@ public class CustomerClueService {
         return normalized;
     }
 
+    private void ensureFinalStatusHasDepositFlow(ClueResponse old, String nextStatus) {
+        if (!"REFUNDED".equals(nextStatus) && !"LANDED".equals(nextStatus)) {
+            return;
+        }
+        if (hasDepositFlow(old)) {
+            return;
+        }
+        throw new BusinessException("\u8be5\u8ba2\u5355\u6ca1\u4ea4\u5b9a\u91d1\uff0c\u4e0d\u80fd\u76f4\u63a5" + statusText(nextStatus));
+    }
+
+    private boolean hasDepositFlow(ClueResponse clue) {
+        if (clue == null) {
+            return false;
+        }
+        String currentStatus = normalizeStatus(clue.status(), "NEW");
+        if ("DEPOSIT_PAID".equals(currentStatus)
+                || "REFUNDED".equals(currentStatus)
+                || "LANDED".equals(currentStatus)
+                || StringUtils.hasText(clean(clue.depositAmount()))) {
+            return true;
+        }
+        return safeHistory(clue).stream()
+                .anyMatch(record -> "DEPOSIT_PAID".equals(normalizeStatus(record.status(), "NEW"))
+                        || StringUtils.hasText(clean(record.depositAmount())));
+    }
+
     private String normalizeSourcePlatform(String sourcePlatform) {
         return normalizeSourcePlatform(sourcePlatform, "DOUYIN");
     }
@@ -901,6 +1019,26 @@ public class CustomerClueService {
         return switch (normalizeSourcePlatform(sourcePlatform)) {
             case "XIAOHONGSHU" -> "\u5c0f\u7ea2\u4e66";
             default -> "\u6296\u97f3";
+        };
+    }
+
+    private String normalizeAddMethod(String addMethod) {
+        return normalizeAddMethod(addMethod, "ACTIVE");
+    }
+
+    private String normalizeAddMethod(String addMethod, String fallback) {
+        String normalized = StringUtils.hasText(addMethod) ? addMethod.trim().toUpperCase(Locale.ROOT) : fallback;
+        if (!ADD_METHODS.contains(normalized)) {
+            return "ACTIVE";
+        }
+        return normalized;
+    }
+
+    private String addMethodText(String addMethod) {
+        return switch (normalizeAddMethod(addMethod)) {
+            case "PASSIVE" -> "\u88ab\u52a8";
+            case "GUIDE" -> "\u9886\u961f";
+            default -> "\u4e3b\u52a8";
         };
     }
 
@@ -940,10 +1078,14 @@ public class CustomerClueService {
         return new ClueResponse(
                 customerCode,
                 normalizeSourcePlatform(request.sourcePlatform()),
+                normalizeAddMethod(request.addMethod()),
                 clean(request.contactInfo()),
                 hasWechatId(request.hasWechatId()),
                 currentUser.name(),
                 currentUser.employeeCode(),
+                currentUser.orgType(),
+                currentUser.branchId(),
+                currentUser.branchName(),
                 status,
                 clean(request.remark()),
                 safeImages(request.douyinImages()),
@@ -954,6 +1096,7 @@ public class CustomerClueService {
                 null,
                 null,
                 clean(request.depositAmount()),
+                clean(request.remainingBalance()),
                 clean(request.statusRemark()),
                 clean(request.refundAmount()),
                 clean(request.refundedAt()),
@@ -968,15 +1111,20 @@ public class CustomerClueService {
         );
     }
 
-    private int nextCustomerSequence() {
-        long todayCount = databaseStore.countCluesCreatedOn(LocalDate.now());
-        return (int) todayCount + 1;
+    private int nextCustomerSequence(UserSession currentUser) {
+        return databaseStore.nextClueDailySequence(LocalDate.now(), sequenceScope(currentUser));
     }
 
     private String createCustomerCode(String employeeCode, int sequence) {
         String dateCode = LocalDate.now().format(DATE_CODE_FORMAT);
-        String prefix = employeeCode + dateCode;
-        return prefix + String.format("%02d", sequence);
+        return employeeCode + dateCode + "-" + String.format("%02d", sequence);
+    }
+
+    private String sequenceScope(UserSession currentUser) {
+        if ("BRANCH".equals(currentUser.orgType()) && StringUtils.hasText(currentUser.branchId())) {
+            return "BRANCH:" + currentUser.branchId().trim().toUpperCase(Locale.ROOT);
+        }
+        return "HQ";
     }
 
     private boolean contains(String value, String keyword) {
@@ -1011,10 +1159,14 @@ public class CustomerClueService {
         return new ClueResponse(
                 old.customerCode(),
                 normalizeSourcePlatform(old.sourcePlatform()),
+                normalizeAddMethod(old.addMethod()),
                 clean(old.contactInfo()),
                 hasWechatId(old.hasWechatId()),
                 old.uploader(),
                 old.uploaderEmployeeCode(),
+                old.orgType(),
+                old.branchId(),
+                old.branchName(),
                 normalizeStatus(old.status(), "NEW"),
                 clean(old.remark()),
                 safeImages(old.douyinImages()),
@@ -1025,6 +1177,7 @@ public class CustomerClueService {
                 old.assignedSales(),
                 old.assignedSalesEmployeeCode(),
                 clean(old.depositAmount()),
+                clean(old.remainingBalance()),
                 clean(old.statusRemark()),
                 clean(old.refundAmount()),
                 clean(old.refundedAt()),

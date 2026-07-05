@@ -99,7 +99,7 @@ import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
-import { sourcePlatformText } from '../utils/status'
+import { addMethodText, sourcePlatformText } from '../utils/status'
 import { getStoredUser } from '../utils/session'
 
 const EmployeeClueList = defineComponent({
@@ -123,6 +123,9 @@ const EmployeeClueList = defineComponent({
         h(ElTableColumn, { label: '来源平台', minWidth: '100' }, {
           default: ({ row }) => sourcePlatformText(row.sourcePlatform)
         }),
+        h(ElTableColumn, { label: '添加方式', minWidth: '96' }, {
+          default: ({ row }) => addMethodText(row.addMethod)
+        }),
         h(ElTableColumn, { label: '客户联系方式', minWidth: '150' }, {
           default: ({ row }) => row.contactInfo || '待补充'
         }),
@@ -137,6 +140,9 @@ const EmployeeClueList = defineComponent({
         }),
         h(ElTableColumn, { label: '定金', minWidth: '100' }, {
           default: ({ row }) => row.depositAmount || '-'
+        }),
+        h(ElTableColumn, { label: '剩余尾款', minWidth: '100' }, {
+          default: ({ row }) => row.remainingBalance || '-'
         }),
         h(ElTableColumn, { prop: 'createdAt', label: '上传时间', minWidth: '160' }),
         props.showActions ? h(ElTableColumn, { label: '操作', width: '110', fixed: 'right' }, {
@@ -153,10 +159,11 @@ const EmployeeClueList = defineComponent({
           h(StatusTag, { status: row.status })
         ]),
         h('span', row.contactInfo || '客户联系方式待补充'),
-        h('small', `${sourcePlatformText(row.sourcePlatform)} · 销售：${row.assignedSales || '未分配'} · ${row.createdAt || '-'}`),
+        h('small', `${sourcePlatformText(row.sourcePlatform)} · ${addMethodText(row.addMethod)} · 销售：${row.assignedSales || '未分配'} · ${row.createdAt || '-'}`),
         h('div', { class: 'tag-wrap' }, [
           row.repeatDemand ? h(ElTag, { type: 'success' }, () => '老客新需求') : null,
-          row.depositAmount ? h(ElTag, { type: 'warning' }, () => `定金 ${row.depositAmount}`) : null
+          row.depositAmount ? h(ElTag, { type: 'warning' }, () => `定金 ${row.depositAmount}`) : null,
+          row.remainingBalance ? h(ElTag, { type: 'info' }, () => `尾款 ${row.remainingBalance}`) : null
         ])
       ])))
     ])
@@ -215,13 +222,13 @@ async function refreshPage() {
 
 async function downloadExcel() {
   exporting.value = true
-  ElMessage.info('????????????...')
+  ElMessage.info('正在导出员工绩效...')
   try {
     const blob = await exportPerformance(dateParams())
-    downloadBlob(blob, todayFilename('????'))
-    ElMessage.success('?????????')
+    downloadBlob(blob, todayFilename('员工绩效'))
+    ElMessage.success('员工绩效导出成功')
   } catch (error) {
-    await showError(error.message || '??????????????')
+    await showError(error.message || '员工绩效导出失败')
   } finally {
     exporting.value = false
   }

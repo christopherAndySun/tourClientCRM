@@ -32,6 +32,12 @@ http.interceptors.response.use(
 )
 
 function normalizeHttpError(error) {
+  if (error?.response?.status === 401) {
+    clearSession()
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
+  }
   if (error?.response?.data?.message) {
     return new Error(error.response.data.message)
   }

@@ -2,6 +2,16 @@
   <section>
     <div class="toolbar">
       <div class="page-title">分配管理</div>
+      <div class="desktop-sound-toggle">
+        <span>提示音</span>
+        <el-switch
+          v-model="notificationSoundEnabled"
+          inline-prompt
+          active-text="开"
+          inactive-text="关"
+          @change="updateNotificationSound"
+        />
+      </div>
     </div>
 
     <div class="pool-tabs">
@@ -26,6 +36,7 @@
         <el-option label="全部状态" value="" />
         <el-option label="新录入" value="NEW" />
         <el-option label="跟进中" value="FOLLOWING" />
+        <el-option label="已通过" value="PASSED" />
         <el-option label="已交定金" value="DEPOSIT_PAID" />
         <el-option label="退单" value="REFUNDED" />
         <el-option label="已落地" value="LANDED" />
@@ -34,6 +45,11 @@
         <el-select v-model="filters.sourcePlatform" class="filter-field" clearable placeholder="来源平台">
           <el-option label="抖音" value="DOUYIN" />
           <el-option label="小红书" value="XIAOHONGSHU" />
+        </el-select>
+        <el-select v-model="filters.addMethod" class="filter-field" clearable placeholder="添加方式">
+          <el-option label="主动" value="ACTIVE" />
+          <el-option label="被动" value="PASSIVE" />
+          <el-option label="领队" value="GUIDE" />
         </el-select>
         <el-select v-model="filters.assignedSales" class="filter-field" clearable filterable placeholder="销售/编号">
           <el-option v-for="sales in salesUsers" :key="sales.employeeCode" :label="`${sales.name}（${sales.employeeCode}）`" :value="sales.employeeCode" />
@@ -51,6 +67,9 @@
         <el-table-column label="来源平台" min-width="100">
           <template #default="{ row }">{{ sourcePlatformText(row.sourcePlatform) }}</template>
         </el-table-column>
+        <el-table-column label="添加方式" min-width="96">
+          <template #default="{ row }">{{ addMethodText(row.addMethod) }}</template>
+        </el-table-column>
         <el-table-column label="客户联系方式" min-width="160">
           <template #default="{ row }">{{ row.contactInfo || '待补充' }}</template>
         </el-table-column>
@@ -59,11 +78,13 @@
           <template #default="{ row }">{{ row.assignedSales || '-' }}</template>
         </el-table-column>
         <el-table-column prop="createdAt" label="上传时间" min-width="160" />
-        <el-table-column label="操作" width="170" fixed="right">
+        <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
             <TextActions>
               <button v-if="canClaim(row)" class="table-action" type="button" @click="claimRow(row)">领取</button>
               <button v-if="canAssign(row)" class="table-action" type="button" @click="openAssign(row)">分配销售</button>
+              <button v-if="canRelease(row)" class="table-action" type="button" @click="releaseRow(row)">释放</button>
+              <button v-if="row.assignLogs?.length" class="table-action" type="button" @click="openAssignLogs(row)">日志</button>
               <button class="table-action" type="button" @click="goDetail(row)">详情</button>
             </TextActions>
           </template>
@@ -84,11 +105,13 @@
         </div>
         <p class="contact-line">{{ row.contactInfo || '客户联系方式待补充' }}</p>
         <small class="compact-meta">
-          {{ sourcePlatformText(row.sourcePlatform) }} · {{ row.uploader || '-' }} · 销售：{{ row.assignedSales || '未分配' }} · {{ row.createdAt }}
+          {{ sourcePlatformText(row.sourcePlatform) }} · {{ addMethodText(row.addMethod) }} · {{ row.uploader || '-' }} · 销售：{{ row.assignedSales || '未分配' }} · {{ row.createdAt }}
         </small>
         <TextActions class="card-actions">
           <button v-if="canClaim(row)" class="table-action" type="button" @click="claimRow(row)">领取</button>
           <button v-if="canAssign(row)" class="table-action" type="button" @click="openAssign(row)">分配销售</button>
+          <button v-if="canRelease(row)" class="table-action" type="button" @click="releaseRow(row)">释放</button>
+          <button v-if="row.assignLogs?.length" class="table-action" type="button" @click="openAssignLogs(row)">日志</button>
           <button class="table-action" type="button" @click="goDetail(row)">详情</button>
         </TextActions>
       </article>
@@ -119,6 +142,7 @@
         <el-button type="primary" :loading="saving" @click="submitAssign">确认分配</el-button>
       </template>
     </el-dialog>
+
     <el-dialog v-model="logVisible" title="分配日志" width="min(760px, 94vw)">
       <el-timeline v-if="currentLogs.length">
         <el-timeline-item v-for="log in currentLogs" :key="`${log.createdAt}-${log.action}-${log.operatorCode}`" :timestamp="log.createdAt" placement="top">
@@ -140,14 +164,21 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { listSalesCandidates } from '../api/auth'
 import { assignClue, claimClue, listMySalesPool, listPublicSalesPool, releaseClue } from '../api/clue'
 import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import TextActions from '../components/TextActions.vue'
 import { useAuthStore } from '../stores/auth'
-import { sourcePlatformText } from '../utils/status'
+import {
+  isNotificationSoundEnabled,
+  playNewDataSound,
+  setNotificationSoundEnabled,
+  setupNotificationSoundUnlock
+} from '../utils/notificationSound'
+import { subscribeRealtime } from '../utils/realtime'
+import { addMethodText, sourcePlatformText } from '../utils/status'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -155,6 +186,7 @@ const filters = reactive({
   customerCode: '',
   contactInfo: '',
   sourcePlatform: '',
+  addMethod: '',
   assignedSales: '',
   keyword: ''
 })
@@ -173,9 +205,13 @@ const page = reactive({ current: 1, size: 10 })
 const mobileFilterVisible = ref(false)
 const assignVisible = ref(false)
 const logVisible = ref(false)
+const notificationSoundEnabled = ref(isNotificationSoundEnabled())
 const currentRow = ref(null)
 const currentLogs = ref([])
 const assignForm = reactive({ salesEmployeeCode: '', remark: '' })
+let unsubscribeRealtime
+let realtimeRefreshTimer
+
 const dateShortcuts = [
   {
     text: '今天',
@@ -283,10 +319,6 @@ function canAssign(row) {
   return poolType.value === 'PUBLIC' && !isSales.value && !row.assignedSalesEmployeeCode
 }
 
-function canTransfer(row) {
-  return !isSales.value && Boolean(row.assignedSalesEmployeeCode)
-}
-
 function canRelease(row) {
   return !isSales.value && Boolean(row.assignedSalesEmployeeCode)
 }
@@ -364,13 +396,43 @@ function showError(message) {
   return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' })
 }
 
+function updateNotificationSound(enabled) {
+  setNotificationSoundEnabled(enabled)
+  if (enabled) setupNotificationSoundUnlock()
+}
+
+function handleRealtimeEvent(event) {
+  if (!event?.targets?.includes('ASSIGN')) return
+  scheduleRealtimeRefresh()
+  if (poolType.value === 'PUBLIC' && ['CLUE_CREATED', 'ASSIGN_RELEASED'].includes(event.type)) {
+    playNewDataSound()
+    ElNotification({
+      title: '有新待处理客资',
+      message: event.message || '公共待分配池有新数据',
+      type: 'success',
+      duration: 3500
+    })
+  }
+}
+
+function scheduleRealtimeRefresh() {
+  clearTimeout(realtimeRefreshTimer)
+  realtimeRefreshTimer = setTimeout(() => {
+    fetchRows()
+  }, 300)
+}
+
 onMounted(() => {
+  setupNotificationSoundUnlock()
+  unsubscribeRealtime = subscribeRealtime(handleRealtimeEvent)
   fetchRows()
   window.addEventListener('crm-toggle-mobile-search', toggleMobileFilter)
   window.addEventListener('scroll', handleMobileScroll, { passive: true })
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(realtimeRefreshTimer)
+  unsubscribeRealtime?.()
   window.removeEventListener('crm-toggle-mobile-search', toggleMobileFilter)
   window.removeEventListener('scroll', handleMobileScroll)
 })
@@ -402,6 +464,15 @@ function handleMobileScroll() {
 </script>
 
 <style scoped>
+.desktop-sound-toggle {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-weight: 800;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .pool-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -410,20 +481,20 @@ function handleMobileScroll() {
 }
 
 .pool-tab {
-  padding: 9px 16px;
+  background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(178, 174, 250, 0.48);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
   color: var(--text-muted);
-  font-weight: 800;
   cursor: pointer;
+  font-weight: 800;
+  padding: 9px 16px;
 }
 
 .pool-tab.active {
-  border-color: transparent;
   background: linear-gradient(90deg, var(--violet), var(--brand));
-  color: #fff;
+  border-color: transparent;
   box-shadow: 0 10px 24px rgba(75, 75, 254, 0.18);
+  color: #fff;
 }
 
 .date-range,
@@ -439,24 +510,24 @@ function handleMobileScroll() {
 }
 
 .card-head {
-  display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  display: flex;
   gap: 10px;
+  justify-content: space-between;
 }
 
 .card-actions {
   display: flex;
-  justify-content: flex-start;
   gap: 8px;
+  justify-content: flex-start;
 }
 
 .contact-line {
-  margin: 0;
-  word-break: break-all;
   color: var(--text-strong);
   font-size: 16px;
   line-height: 1.45;
+  margin: 0;
+  word-break: break-all;
 }
 
 .compact-meta {
@@ -464,12 +535,12 @@ function handleMobileScroll() {
 }
 
 .assign-log-card {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(178, 174, 250, 0.34);
+  border-radius: 14px;
   display: grid;
   gap: 6px;
   padding: 12px 14px;
-  border: 1px solid rgba(178, 174, 250, 0.34);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72);
 }
 
 .assign-log-card strong {
@@ -478,11 +549,19 @@ function handleMobileScroll() {
 
 .assign-log-card span,
 .assign-log-card p {
-  margin: 0;
   color: var(--text-muted);
+  margin: 0;
 }
 
 @media (max-width: 760px) {
+  .desktop-sound-toggle {
+    display: none;
+  }
+
+  .desktop-table {
+    display: none;
+  }
+
   .pool-tabs {
     gap: 8px;
     margin-bottom: 12px;
@@ -490,9 +569,9 @@ function handleMobileScroll() {
 
   .pool-tab {
     flex: 1;
+    font-size: 13px;
     min-width: 0;
     padding: 10px 8px;
-    font-size: 13px;
   }
 
   .clue-card {
@@ -500,32 +579,32 @@ function handleMobileScroll() {
   }
 
   .mobile-load-state {
-    padding: 4px 0 16px;
     color: var(--text-muted);
-    text-align: center;
     font-size: 13px;
+    padding: 4px 0 16px;
+    text-align: center;
   }
 
   .mobile-loading-panel {
+    background: rgba(255, 255, 255, 0.82);
+    border-radius: 18px;
+    box-shadow: var(--shadow-soft);
     display: grid;
     gap: 10px;
     padding: 18px;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.82);
-    box-shadow: var(--shadow-soft);
   }
 
   .loading-line {
-    height: 14px;
-    border-radius: 999px;
+    animation: loading-shimmer 1.2s linear infinite;
     background: linear-gradient(90deg, rgba(178, 174, 250, 0.22), rgba(255, 255, 255, 0.78), rgba(178, 174, 250, 0.22));
     background-size: 220% 100%;
-    animation: loading-shimmer 1.2s linear infinite;
+    border-radius: 999px;
+    height: 14px;
   }
 
   .loading-line.strong {
-    width: 72%;
     height: 18px;
+    width: 72%;
   }
 
   .loading-line.short {
@@ -536,10 +615,16 @@ function handleMobileScroll() {
     from {
       background-position: 120% 0;
     }
+
     to {
       background-position: -120% 0;
     }
   }
+}
 
+@media (min-width: 761px) {
+  .mobile-list {
+    display: none;
+  }
 }
 </style>

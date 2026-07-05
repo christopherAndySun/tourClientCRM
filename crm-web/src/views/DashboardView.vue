@@ -43,6 +43,14 @@
           {{ menu.name }}
         </router-link>
       </div>
+
+      <div class="mobile-account-panel">
+        <router-link class="mobile-profile-link" to="/profile" @click="closeMobileMenu">
+          <strong>{{ authStore.user?.name || '未登录' }}</strong>
+          <span>{{ authStore.user?.employeeCode || '-' }}</span>
+        </router-link>
+        <button class="mobile-logout-link" type="button" @click="logout">退出登录</button>
+      </div>
     </aside>
 
     <main class="content">
@@ -166,6 +174,10 @@ function toggleMobileSearch() {
   cursor: pointer;
 }
 
+.mobile-account-panel {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .mobile-topbar {
     position: sticky;
@@ -275,6 +287,8 @@ function toggleMobileSearch() {
 
   .side-nav {
     z-index: 31;
+    display: flex;
+    flex-direction: column;
     transform: translateX(-112%);
     transition: transform 0.22s ease;
   }
@@ -289,6 +303,43 @@ function toggleMobileSearch() {
 
   .user-bar {
     display: none;
+  }
+
+  .mobile-account-panel {
+    display: grid;
+    gap: 12px;
+    margin-top: auto;
+    padding: 18px 12px calc(4px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .mobile-profile-link {
+    display: grid;
+    gap: 4px;
+    color: rgba(255, 255, 255, 0.9);
+    text-decoration: none;
+  }
+
+  .mobile-profile-link strong {
+    font-size: 16px;
+  }
+
+  .mobile-profile-link span {
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 13px;
+  }
+
+  .mobile-logout-link {
+    width: max-content;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #ffb4b4;
+    font: inherit;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    cursor: pointer;
   }
 }
 </style>

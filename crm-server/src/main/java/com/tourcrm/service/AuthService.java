@@ -36,6 +36,7 @@ public class AuthService {
     public static final String MENU_ASSIGN = "ASSIGN";
     public static final String MENU_ASSIGN_LOGS = "ASSIGN_LOGS";
     public static final String MENU_OPERATION_LOGS = "OPERATION_LOGS";
+    public static final String MENU_THIRD_PARTY_POOL = "THIRD_PARTY_POOL";
     public static final String MENU_ORG = "ORG";
     public static final String MENU_MENUS = "MENUS";
     public static final String MENU_SETTINGS = "SETTINGS";
@@ -46,6 +47,7 @@ public class AuthService {
     private static final Pattern EMPLOYEE_CODE_PATTERN = Pattern.compile("^[A-Z]{2,5}$");
     private static final Set<String> ROLES = Set.of("ADMIN", "LEADER", "EMPLOYEE");
     private static final Set<String> POSITIONS = Set.of("OPERATION", "SALES");
+    private static final Set<String> ORG_TYPES = Set.of("HEADQUARTERS", "BRANCH");
     private static final Set<String> MENUS = Set.of(
             MENU_CLUES,
             MENU_CLUE_CREATE,
@@ -56,6 +58,7 @@ public class AuthService {
             MENU_ASSIGN,
             MENU_ASSIGN_LOGS,
             MENU_OPERATION_LOGS,
+            MENU_THIRD_PARTY_POOL,
             MENU_ORG,
             MENU_MENUS,
             MENU_SETTINGS
@@ -160,9 +163,12 @@ public class AuthService {
 
         String role = normalizeRole(request.role(), "EMPLOYEE");
         String position = normalizePosition(request.position(), "OPERATION");
+        String orgType = normalizeOrgType(request.orgType(), position);
+        String branchId = normalizeBranchId(request.branchId(), orgType);
+        String branchName = normalizeBranchName(request.branchName(), orgType);
         String leaderEmployeeCode = "EMPLOYEE".equals(role) ? normalizeNullableEmployeeCode(request.leaderEmployeeCode()) : null;
         if (StringUtils.hasText(leaderEmployeeCode)) {
-            validateLeader(users, leaderEmployeeCode, position);
+            validateLeader(users, leaderEmployeeCode, position, orgType, branchId);
         }
         UserRecord user = new UserRecord(
                 request.name().trim(),
@@ -171,6 +177,9 @@ public class AuthService {
                 role,
                 position,
                 leaderEmployeeCode,
+                orgType,
+                branchId,
+                branchName,
                 normalizeMenus(request.menuPermissions(), role, position),
                 LocalDateTime.now().format(DATE_TIME_FORMAT)
         );
@@ -190,19 +199,25 @@ public class AuthService {
         UserRecord old = oldOptional.get();
         String role = normalizeRole(request.role(), old.role());
         String position = normalizePosition(request.position(), old.position());
+        String orgType = normalizeOrgType(request.orgType(), position);
+        String branchId = normalizeBranchId(request.branchId(), orgType);
+        String branchName = normalizeBranchName(request.branchName(), orgType);
         String leaderEmployeeCode = normalizeNullableEmployeeCode(request.leaderEmployeeCode());
         if ("ADMIN".equals(old.employeeCode())) {
             role = "ADMIN";
+            orgType = "HEADQUARTERS";
+            branchId = null;
+            branchName = null;
             leaderEmployeeCode = null;
         }
-        if ("EMPLOYEE".equals(role) && !position.equals(old.position())) {
+        if ("EMPLOYEE".equals(role) && (!position.equals(old.position()) || !sameOrg(orgType, branchId, old.orgType(), old.branchId()))) {
             leaderEmployeeCode = null;
         }
         if ("ADMIN".equals(role) || "LEADER".equals(role)) {
             leaderEmployeeCode = null;
         }
         if ("EMPLOYEE".equals(role) && StringUtils.hasText(leaderEmployeeCode)) {
-            validateLeader(users, leaderEmployeeCode, position);
+            validateLeader(users, leaderEmployeeCode, position, orgType, branchId);
         }
         validateNameAndPassword(request.name(), request.password(), old.password());
         UserRecord updated = new UserRecord(
@@ -212,6 +227,9 @@ public class AuthService {
                 role,
                 position,
                 leaderEmployeeCode,
+                orgType,
+                branchId,
+                branchName,
                 normalizeMenus(request.menuPermissions(), role, position),
                 old.createdAt()
         );
@@ -257,6 +275,9 @@ public class AuthService {
                 old.role(),
                 old.position(),
                 old.leaderEmployeeCode(),
+                old.orgType(),
+                old.branchId(),
+                old.branchName(),
                 old.menuPermissions(),
                 old.createdAt()
         );
@@ -331,6 +352,41 @@ public class AuthService {
         return normalized;
     }
 
+    private String normalizeOrgType(String orgType, String position) {
+        if ("SALES".equals(position)) {
+            return "HEADQUARTERS";
+        }
+        String normalized = StringUtils.hasText(orgType) ? orgType.trim().toUpperCase() : "HEADQUARTERS";
+        if (!ORG_TYPES.contains(normalized)) {
+            throw new BusinessException("组织类型不正确");
+        }
+        return normalized;
+    }
+
+    private String normalizeBranchId(String branchId, String orgType) {
+        if (!"BRANCH".equals(orgType)) {
+            return null;
+        }
+        if (!StringUtils.hasText(branchId)) {
+            throw new BusinessException("分公司ID不能为空");
+        }
+        String normalized = branchId.trim().toUpperCase();
+        if (!normalized.matches("^[A-Z0-9_-]{1,32}$")) {
+            throw new BusinessException("分公司ID只能包含字母、数字、下划线或短横线");
+        }
+        return normalized;
+    }
+
+    private String normalizeBranchName(String branchName, String orgType) {
+        if (!"BRANCH".equals(orgType)) {
+            return null;
+        }
+        if (!StringUtils.hasText(branchName)) {
+            throw new BusinessException("分公司名称不能为空");
+        }
+        return branchName.trim();
+    }
+
     private List<String> normalizeMenus(List<String> menuPermissions, String role, String position) {
         if ("ADMIN".equals(role)) {
             return List.copyOf(MENUS);
@@ -360,13 +416,16 @@ public class AuthService {
                 user.role(),
                 user.position(),
                 user.leaderEmployeeCode(),
+                user.orgType(),
+                user.branchId(),
+                user.branchName(),
                 user.menuPermissions(),
                 expiresAt.format(DATE_TIME_FORMAT)
         );
     }
 
     private UserSession toSession(UserRecord user) {
-        return new UserSession(user.name(), user.employeeCode(), user.role(), user.position(), user.leaderEmployeeCode(), user.menuPermissions());
+        return new UserSession(user.name(), user.employeeCode(), user.role(), user.position(), user.leaderEmployeeCode(), user.orgType(), user.branchId(), user.branchName(), user.menuPermissions());
     }
 
     private String createToken() {
@@ -396,6 +455,9 @@ public class AuthService {
                         old.role(),
                         old.position(),
                         old.leaderEmployeeCode(),
+                        old.orgType(),
+                        old.branchId(),
+                        old.branchName(),
                         old.menuPermissions(),
                         old.createdAt()
                 )));
@@ -433,6 +495,7 @@ public class AuthService {
     private UserRecord normalizeUser(UserRecord user) {
         String role = StringUtils.hasText(user.role()) ? user.role() : "EMPLOYEE";
         String position = StringUtils.hasText(user.position()) ? user.position() : "OPERATION";
+        String orgType = normalizeOrgType(user.orgType(), position);
         return new UserRecord(
                 user.name(),
                 normalizeEmployeeCode(user.employeeCode()),
@@ -440,12 +503,15 @@ public class AuthService {
                 role,
                 position,
                 normalizeNullableEmployeeCode(user.leaderEmployeeCode()),
+                orgType,
+                normalizeBranchId(user.branchId(), orgType),
+                normalizeBranchName(user.branchName(), orgType),
                 normalizeMenus(user.menuPermissions(), role, position),
                 user.createdAt()
         );
     }
 
-    private void validateLeader(List<UserRecord> users, String leaderEmployeeCode, String position) {
+    private void validateLeader(List<UserRecord> users, String leaderEmployeeCode, String position, String orgType, String branchId) {
         UserRecord leader = users.stream()
                 .filter(user -> user.employeeCode().equals(leaderEmployeeCode))
                 .findFirst()
@@ -456,6 +522,16 @@ public class AuthService {
         if (!"ADMIN".equals(leader.role()) && !position.equals(leader.position())) {
             throw new BusinessException("员工只能挂到同部门组长下");
         }
+    }
+
+    private boolean sameOrg(String leftType, String leftBranchId, String rightType, String rightBranchId) {
+        String left = "BRANCH".equals(leftType) ? normalizeNullableText(leftBranchId) : "HQ";
+        String right = "BRANCH".equals(rightType) ? normalizeNullableText(rightBranchId) : "HQ";
+        return left.equals(right);
+    }
+
+    private String normalizeNullableText(String value) {
+        return value == null ? "" : value.trim().toUpperCase();
     }
 
     private List<UserRecord> ensureAdminUser(List<UserRecord> users) {
@@ -469,6 +545,9 @@ public class AuthService {
                 encodePassword(ADMIN_PASSWORD),
                 "ADMIN",
                 "OPERATION",
+                null,
+                "HEADQUARTERS",
+                null,
                 null,
                 List.copyOf(MENUS),
                 LocalDateTime.now().format(DATE_TIME_FORMAT)
