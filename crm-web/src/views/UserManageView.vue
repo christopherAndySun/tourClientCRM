@@ -168,6 +168,7 @@ import { listMenus } from '../api/menu'
 import AppPagination from '../components/AppPagination.vue'
 import TextActions from '../components/TextActions.vue'
 import { FALLBACK_MENUS, groupMenus, mergeMenus } from '../composables/menuConfig'
+import { showError } from '../utils/feedback'
 
 const menus = ref([...FALLBACK_MENUS])
 const enabledMenus = computed(() => menus.value.filter((menu) => menu.enabled || menu.code === 'MENUS'))
@@ -450,13 +451,6 @@ function normalizeUserMenus(user) {
 function defaultMenusForPosition(position) {
   const enabledCodes = new Set(ALL_MENUS.value)
   return (DEFAULT_MENUS[position] || DEFAULT_MENUS.OPERATION).filter((code) => enabledCodes.has(code))
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', {
-    confirmButtonText: '我知道了',
-    type: 'warning'
-  })
 }
 
 function roleText(role) {

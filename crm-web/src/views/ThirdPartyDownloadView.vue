@@ -124,8 +124,12 @@
           </button>
         </TextActions>
       </article>
+      <div v-if="rows.length" class="mobile-load-state">
+        <span v-if="loadingMore">加载中...</span>
+        <span v-else-if="hasMore">上滑加载更多</span>
+        <span v-else>已经到底了</span>
+      </div>
       <el-empty v-if="!loading && !rows.length" :description="activeTab === 'pending' ? '暂无待下载客资' : '暂无已下载记录'" />
-      <AppPagination v-if="rows.length" v-model:current-page="page.current" v-model:page-size="page.size" :total="total" compact />
     </div>
   </section>
 </template>
@@ -133,7 +137,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { ElMessage, ElNotification } from 'element-plus'
 import { getClue } from '../api/clue'
 import { listThirdPartyDownloaded, listThirdPartyPending, markThirdPartyDownloaded } from '../api/thirdPartyDownload'
 import AppPagination from '../components/AppPagination.vue'
@@ -149,15 +153,18 @@ import {
 } from '../utils/notificationSound'
 import { subscribeRealtime } from '../utils/realtime'
 import { addMethodText, sourcePlatformText } from '../utils/status'
+import { showError } from '../utils/feedback'
 
 const router = useRouter()
 const activeTab = ref('pending')
 const filterExpanded = ref(false)
 const mobileFilterVisible = ref(false)
 const loading = ref(false)
+const loadingMore = ref(false)
 const downloadingCode = ref('')
 const rows = ref([])
 const total = ref(0)
+const hasMore = ref(false)
 const page = reactive({ current: 1, size: 10 })
 const dateRange = ref([])
 const notificationSoundEnabled = ref(isNotificationSoundEnabled())
@@ -174,8 +181,17 @@ const filters = reactive({
 let unsubscribeRealtime
 let realtimeRefreshTimer
 
-async function fetchRows() {
-  loading.value = true
+async function fetchRows({ append = false } = {}) {
+  const isMobile = window.matchMedia('(max-width: 760px)').matches
+  if (append) {
+    if (loading.value || loadingMore.value || !hasMore.value) return
+    loadingMore.value = true
+  } else {
+    loading.value = true
+    if (isMobile) {
+      page.current = 1
+    }
+  }
   try {
     const api = activeTab.value === 'pending' ? listThirdPartyPending : listThirdPartyDownloaded
     const res = await api({
@@ -186,17 +202,23 @@ async function fetchRows() {
       pageSize: page.size
     })
     const payload = normalizePage(res.data)
-    rows.value = payload.records.map(normalizeRow)
+    const nextRows = payload.records.map(normalizeRow)
+    rows.value = append ? [...rows.value, ...nextRows] : nextRows
     total.value = payload.total
+    hasMore.value = payload.hasMore
+  } catch (error) {
+    await showError(error.message || '三方下载池加载失败')
   } finally {
     loading.value = false
+    loadingMore.value = false
   }
 }
 
 function normalizePage(data) {
   return {
     records: data?.records || [],
-    total: data?.total || 0
+    total: data?.total || 0,
+    hasMore: Boolean(data?.hasMore)
   }
 }
 
@@ -223,6 +245,7 @@ function searchRows() {
 
 function handleTabChange() {
   page.current = 1
+  rows.value = []
   fetchRows()
 }
 
@@ -251,13 +274,6 @@ async function downloadRow(row) {
 function userLabel(name, code) {
   if (name && code) return `${name}（${code}）`
   return name || code || '-'
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', {
-    confirmButtonText: '我知道了',
-    type: 'warning'
-  })
 }
 
 function updateNotificationSound(enabled) {
@@ -290,19 +306,40 @@ function scheduleRealtimeRefresh() {
   }, 300)
 }
 
-watch(() => [page.current, page.size], fetchRows)
+watch(() => page.size, () => {
+  const wasFirstPage = page.current === 1
+  page.current = 1
+  if (wasFirstPage) fetchRows()
+})
+
+watch(() => page.current, (current, previous) => {
+  if (window.matchMedia('(max-width: 760px)').matches) return
+  if (current !== previous) fetchRows()
+})
+
+function handleMobileScroll() {
+  if (!window.matchMedia('(max-width: 760px)').matches) return
+  if (!hasMore.value || loading.value || loadingMore.value) return
+  const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 180
+  if (nearBottom) {
+    page.current += 1
+    fetchRows({ append: true })
+  }
+}
 
 onMounted(() => {
   setupNotificationSoundUnlock()
   unsubscribeRealtime = subscribeRealtime(handleRealtimeEvent)
   fetchRows()
   window.addEventListener('crm-toggle-mobile-search', toggleMobileFilter)
+  window.addEventListener('scroll', handleMobileScroll, { passive: true })
 })
 
 onBeforeUnmount(() => {
   clearTimeout(realtimeRefreshTimer)
   unsubscribeRealtime?.()
   window.removeEventListener('crm-toggle-mobile-search', toggleMobileFilter)
+  window.removeEventListener('scroll', handleMobileScroll)
 })
 </script>
 

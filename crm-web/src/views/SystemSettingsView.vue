@@ -52,6 +52,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getSystemSettings, saveSystemSettings } from '../api/settings'
+import { showError } from '../utils/feedback'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -105,10 +106,6 @@ async function submit() {
   } finally {
     saving.value = false
   }
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' })
 }
 
 onMounted(fetchSettings)

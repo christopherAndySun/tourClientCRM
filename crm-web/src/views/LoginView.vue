@@ -32,8 +32,8 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { showError } from '../utils/feedback'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -59,12 +59,6 @@ async function loginSubmit() {
   }
 }
 
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', {
-    confirmButtonText: '我知道了',
-    type: 'warning'
-  })
-}
 </script>
 
 <style scoped>

@@ -179,6 +179,7 @@ import {
 } from '../utils/notificationSound'
 import { subscribeRealtime } from '../utils/realtime'
 import { addMethodText, sourcePlatformText } from '../utils/status'
+import { showError } from '../utils/feedback'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -390,10 +391,6 @@ async function releaseRow(row) {
 
 function goDetail(row) {
   router.push(`/clues/${row.customerCode}`)
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' })
 }
 
 function updateNotificationSound(enabled) {

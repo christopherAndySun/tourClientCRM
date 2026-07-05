@@ -144,6 +144,7 @@ import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import TextActions from '../components/TextActions.vue'
 import { useAuthStore } from '../stores/auth'
+import { showError } from '../utils/feedback'
 import { addMethodText, sourcePlatformText } from '../utils/status'
 
 const router = useRouter()
@@ -292,13 +293,6 @@ async function removeRow(row) {
       await showError(error.message || '删除失败')
     }
   }
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', {
-    confirmButtonText: '我知道了',
-    type: 'warning'
-  })
 }
 
 onMounted(() => {

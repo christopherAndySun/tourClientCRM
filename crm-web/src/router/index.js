@@ -52,6 +52,10 @@ const router = createRouter({
   routes
 })
 
+const MENU_CACHE_MS = 30 * 1000
+let menuCache = null
+let menuCacheAt = 0
+
 router.beforeEach(async (to) => {
   const token = getToken()
   if (to.path !== '/login' && !token) {
@@ -61,27 +65,26 @@ router.beforeEach(async (to) => {
     return '/index'
   }
   const user = getStoredUser()
+  const menus = await ensureMenus()
   if (to.meta.adminOnly && user?.role !== 'ADMIN') {
-    return firstAllowedPath(user)
+    return firstAllowedPath(user, menus)
   }
   if (to.meta.menu && to.meta.menu !== 'MENUS') {
-    const menus = await ensureMenus()
     const menu = menus.find((item) => item.code === to.meta.menu)
     if (menu && !menu.enabled) {
-      return firstAllowedPath(user)
+      return firstAllowedPath(user, menus)
     }
   }
   if (to.meta.menu && user?.role !== 'ADMIN' && to.meta.menu !== 'STATS' && !hasMenuPermission(user, to.meta.menu)) {
-    return firstAllowedPath(user)
+    return firstAllowedPath(user, menus)
   }
   if (to.meta.anyMenu && user?.role !== 'ADMIN' && !to.meta.anyMenu.some((menu) => user?.menuPermissions?.includes(menu))) {
-    return firstAllowedPath(user)
+    return firstAllowedPath(user, menus)
   }
   return true
 })
 
-function firstAllowedPath(user) {
-  const menus = mergeMenus(JSON.parse(localStorage.getItem('crm_menus') || 'null') || FALLBACK_MENUS)
+function firstAllowedPath(user, menus = FALLBACK_MENUS) {
   const enabledCodes = new Set(menus.filter((menu) => menu.enabled || menu.code === 'MENUS').map((menu) => menu.code))
   const menuPathMap = [
     ['STATS', '/index'],
@@ -110,19 +113,17 @@ function hasMenuPermission(user, menu) {
 }
 
 async function ensureMenus() {
-  const cached = JSON.parse(localStorage.getItem('crm_menus') || 'null')
-  if (cached?.length) {
-    const menus = mergeMenus(cached)
-    localStorage.setItem('crm_menus', JSON.stringify(menus))
-    return menus
+  if (menuCache && Date.now() - menuCacheAt < MENU_CACHE_MS) {
+    return menuCache
   }
   try {
     const res = await listMenus()
     const menus = mergeMenus(res.data || FALLBACK_MENUS)
-    localStorage.setItem('crm_menus', JSON.stringify(menus))
+    menuCache = menus
+    menuCacheAt = Date.now()
     return menus
   } catch (error) {
-    return mergeMenus(FALLBACK_MENUS)
+    return menuCache || mergeMenus(FALLBACK_MENUS)
   }
 }
 

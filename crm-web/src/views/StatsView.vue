@@ -100,7 +100,6 @@
 <script setup>
 import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
 import { getClueStats, getPerformance, getStatsDetail } from '../api/clue'
 import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
@@ -108,6 +107,7 @@ import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
 import { getStoredUser } from '../utils/session'
 import { addMethodText } from '../utils/status'
+import { showError } from '../utils/feedback'
 
 const TreeNode = defineComponent({
   name: 'TreeNode',
@@ -234,10 +234,7 @@ async function openDetail(type, value, title, overrideDates = null) {
   } catch (error) {
     detailRows.value = []
     detailTotal.value = 0
-    await ElMessageBox.alert(error.message || '统计明细加载失败', '提示', {
-      confirmButtonText: '我知道了',
-      type: 'warning'
-    })
+    await showError(error.message || '统计明细加载失败')
   } finally {
     detailLoading.value = false
   }

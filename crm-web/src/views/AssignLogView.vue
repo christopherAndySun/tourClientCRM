@@ -76,11 +76,11 @@
 <script setup>
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
 import { listAssignLogs } from '../api/clue'
 import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import TextActions from '../components/TextActions.vue'
+import { showError } from '../utils/feedback'
 
 const router = useRouter()
 const loading = ref(false)
@@ -164,10 +164,6 @@ function formatDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' })
 }
 
 watch([() => page.current, () => page.size], fetchRows)

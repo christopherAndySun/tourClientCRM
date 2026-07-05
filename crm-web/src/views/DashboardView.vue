@@ -84,7 +84,7 @@ const visibleMenuGroups = computed(() => {
   return groupMenus(visibleMenus)
 })
 const showSearchAction = computed(() => {
-  return ['/clues', '/assign'].includes(route.path)
+  return ['/clues', '/assign', '/third-party-pool'].includes(route.path)
 })
 
 onMounted(() => {
@@ -102,7 +102,6 @@ async function fetchMenus() {
   try {
     const res = await listMenus()
     menus.value = mergeMenus(res.data || FALLBACK_MENUS)
-    localStorage.setItem('crm_menus', JSON.stringify(menus.value))
   } catch (error) {
     menus.value = mergeMenus(FALLBACK_MENUS)
   }

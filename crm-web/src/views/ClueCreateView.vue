@@ -40,6 +40,7 @@ import StatusTag from '../components/StatusTag.vue'
 import { resolveAssetUrl } from '../utils/assets'
 import { getStoredUser } from '../utils/session'
 import { addMethodText, sourcePlatformText, statusText } from '../utils/status'
+import { showError } from '../utils/feedback'
 
 const route = useRoute()
 const router = useRouter()
@@ -320,7 +321,6 @@ function loadImage(url) {
   })
 }
 function normalizeStatus(status) { if (status === 'TO_DEAL') return 'FOLLOWING'; if (status === 'DEALED') return 'DEPOSIT_PAID'; return status || 'NEW' }
-function showError(message) { return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' }) }
 </script>
 <style scoped>
 .clue-form {

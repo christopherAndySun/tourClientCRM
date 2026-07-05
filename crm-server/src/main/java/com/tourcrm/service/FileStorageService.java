@@ -8,10 +8,12 @@ import org.springframework.util.StringUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 
 @Service
 public class FileStorageService {
 
+    private static final long MAX_IMAGE_BYTES = 10L * 1024L * 1024L;
     private final Path uploadDir;
 
     public FileStorageService(@Value("${app.upload-dir:uploads}") String uploadDir) {
@@ -32,6 +34,9 @@ public class FileStorageService {
 
         String extension = cleanImageExtension(url.substring(slashIndex + 1, semicolonIndex));
         byte[] bytes = java.util.Base64.getDecoder().decode(url.substring(commaIndex + 1));
+        if (bytes.length > MAX_IMAGE_BYTES) {
+            throw new IllegalStateException("图片不能超过 10MB");
+        }
         String safeCustomerCode = customerCode.replaceAll("[^A-Za-z0-9_-]", "_");
         String safeType = imageType.replaceAll("[^A-Za-z0-9_-]", "_").toLowerCase();
         String uidPart = StringUtils.hasText(image.uid()) ? image.uid() : String.valueOf(index);
@@ -48,6 +53,30 @@ public class FileStorageService {
             return "/uploads/" + relativeDir.resolve(fileName).toString().replace("\\", "/");
         } catch (IOException error) {
             throw new IllegalStateException("保存图片文件失败", error);
+        }
+    }
+
+    public void deleteStoredFiles(Collection<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return;
+        }
+        for (String url : urls) {
+            deleteStoredFile(url);
+        }
+    }
+
+    private void deleteStoredFile(String url) {
+        if (!StringUtils.hasText(url) || !url.startsWith("/uploads/")) {
+            return;
+        }
+        Path target = uploadDir.resolve(url.substring("/uploads/".length())).normalize();
+        if (!target.startsWith(uploadDir)) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException ignored) {
+            // Best effort cleanup. Database state remains the source of truth.
         }
     }
 

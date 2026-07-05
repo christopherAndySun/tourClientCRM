@@ -4,6 +4,8 @@ public record ImageFileDto(
         String name,
         String url,
         String uid,
-        Integer sortOrder
+        Integer sortOrder,
+        Long sizeBytes,
+        String contentType
 ) {
 }

@@ -175,6 +175,7 @@ import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import TextActions from '../components/TextActions.vue'
+import { showError } from '../utils/feedback'
 import { statusText } from '../utils/status'
 
 const filters = reactive({ customerCode: '', customerName: '', dealCode: '', status: '', keyword: '' })
@@ -339,10 +340,6 @@ function formatDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' })
 }
 
 watch([() => page.current, () => page.size], fetchRows)

@@ -23,8 +23,9 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { showError } from '../utils/feedback'
 
 const authStore = useAuthStore()
 const saving = ref(false)
@@ -62,12 +63,6 @@ async function submit() {
   }
 }
 
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', {
-    confirmButtonText: '我知道了',
-    type: 'warning'
-  })
-}
 </script>
 
 <style scoped>

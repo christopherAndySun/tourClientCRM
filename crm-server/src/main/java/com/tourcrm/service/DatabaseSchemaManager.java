@@ -21,6 +21,7 @@ public class DatabaseSchemaManager {
         backfillTypedColumnsSafely();
         addMissingIndexes();
         backfillCustomerProfiles();
+        cleanupOrphanChildRows();
         dropLegacyPayloadColumns();
     }
 
@@ -154,6 +155,8 @@ public class DatabaseSchemaManager {
                   url VARCHAR(1024) NULL,
                   uid VARCHAR(128) NULL,
                   sort_order INT NOT NULL DEFAULT 0,
+                  size_bytes BIGINT NULL,
+                  content_type VARCHAR(80) NULL,
                   INDEX idx_crm_clue_images_code_type (customer_code, image_type, sort_order)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
@@ -338,6 +341,8 @@ public class DatabaseSchemaManager {
         addColumnIfMissing("crm_clues", "landing_remark", "landing_remark TEXT NULL");
         addColumnIfMissing("crm_clues", "created_at_value", "created_at_value DATETIME NULL");
         addColumnIfMissing("crm_clues", "updated_at_value", "updated_at_value DATETIME NULL");
+        addColumnIfMissing("crm_clue_images", "size_bytes", "size_bytes BIGINT NULL");
+        addColumnIfMissing("crm_clue_images", "content_type", "content_type VARCHAR(80) NULL");
         addColumnIfMissing("crm_deals", "deposit", "deposit VARCHAR(64) NULL");
         addColumnIfMissing("crm_deals", "deposit_value", "deposit_value DECIMAL(12,2) NULL");
         addColumnIfMissing("crm_deals", "remaining_balance", "remaining_balance VARCHAR(64) NULL");
@@ -423,6 +428,15 @@ public class DatabaseSchemaManager {
         addIndexIfMissing("crm_menus", "idx_crm_menus_group_sort", "CREATE INDEX idx_crm_menus_group_sort ON crm_menus (group_code, sort_no)");
         addIndexIfMissing("crm_login_sessions", "idx_crm_sessions_employee", "CREATE INDEX idx_crm_sessions_employee ON crm_login_sessions (employee_code)");
         addIndexIfMissing("crm_login_sessions", "idx_crm_sessions_expires", "CREATE INDEX idx_crm_sessions_expires ON crm_login_sessions (expires_at)");
+    }
+
+    private void cleanupOrphanChildRows() {
+        jdbcTemplate.update("DELETE child FROM crm_clue_images child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
+        jdbcTemplate.update("DELETE child FROM crm_clue_status_history child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
+        jdbcTemplate.update("DELETE child FROM crm_clue_follow_records child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
+        jdbcTemplate.update("DELETE child FROM crm_clue_assign_logs child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
+        jdbcTemplate.update("DELETE child FROM crm_clue_operation_logs child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
+        jdbcTemplate.update("DELETE child FROM crm_third_party_downloads child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
     }
 
     private void tightenColumnTypesWhenSafe() {

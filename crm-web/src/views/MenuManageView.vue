@@ -44,6 +44,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listMenus, saveMenus } from '../api/menu'
 import { FALLBACK_MENUS, groupMenus, mergeMenus } from '../composables/menuConfig'
+import { showError } from '../utils/feedback'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -55,7 +56,6 @@ async function fetchMenus() {
   try {
     const res = await listMenus()
     menus.value = cloneMenus(mergeMenus(res.data || FALLBACK_MENUS))
-    localStorage.setItem('crm_menus', JSON.stringify(menus.value))
   } catch (error) {
     menus.value = cloneMenus(mergeMenus(FALLBACK_MENUS))
   } finally {
@@ -83,7 +83,6 @@ async function submitMenus() {
     }))
     const res = await saveMenus(payload)
     menus.value = cloneMenus(res.data || payload)
-    localStorage.setItem('crm_menus', JSON.stringify(menus.value))
     ElMessage.success('菜单已保存')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
@@ -96,10 +95,6 @@ async function submitMenus() {
 
 function cloneMenus(source) {
   return source.map((item) => ({ ...item }))
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' })
 }
 
 onMounted(fetchMenus)

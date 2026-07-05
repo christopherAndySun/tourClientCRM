@@ -1691,9 +1691,13 @@ public class DatabaseStore {
     }
 
     private void replaceClueChildren(ClueResponse row) {
-        deleteClueChildren(row.customerCode());
-        writeImages(row.customerCode(), "DOUYIN", row.douyinImages());
-        writeImages(row.customerCode(), "WECHAT", row.wechatImages());
+        List<String> oldImageUrls = readStoredImageUrls(row.customerCode());
+        deleteClueChildRowsOnly(row.customerCode());
+        List<String> activeImageUrls = new ArrayList<>();
+        activeImageUrls.addAll(writeImages(row.customerCode(), "DOUYIN", row.douyinImages()));
+        activeImageUrls.addAll(writeImages(row.customerCode(), "WECHAT", row.wechatImages()));
+        oldImageUrls.removeAll(activeImageUrls);
+        fileStorageService.deleteStoredFiles(oldImageUrls);
         writeStatusHistory(row.customerCode(), row.statusHistory());
         writeFollowRecords(row.customerCode(), row.followRecords());
         writeAssignLogs(row.customerCode(), row.assignLogs());
@@ -1701,6 +1705,12 @@ public class DatabaseStore {
     }
 
     private void deleteClueChildren(String customerCode) {
+        List<String> imageUrls = readStoredImageUrls(customerCode);
+        deleteClueChildRowsOnly(customerCode);
+        fileStorageService.deleteStoredFiles(imageUrls);
+    }
+
+    private void deleteClueChildRowsOnly(String customerCode) {
         jdbcTemplate.update("DELETE FROM crm_clue_images WHERE customer_code = ?", customerCode);
         jdbcTemplate.update("DELETE FROM crm_clue_status_history WHERE customer_code = ?", customerCode);
         jdbcTemplate.update("DELETE FROM crm_clue_follow_records WHERE customer_code = ?", customerCode);
@@ -1708,31 +1718,91 @@ public class DatabaseStore {
         jdbcTemplate.update("DELETE FROM crm_clue_operation_logs WHERE customer_code = ?", customerCode);
     }
 
-    private void writeImages(String customerCode, String imageType, List<ImageFileDto> images) {
+    private List<String> writeImages(String customerCode, String imageType, List<ImageFileDto> images) {
+        List<String> persistedUrls = new ArrayList<>();
         if (images == null) {
-            return;
+            return persistedUrls;
         }
         for (int i = 0; i < images.size(); i++) {
             ImageFileDto image = images.get(i);
             String imageUrl = fileStorageService.persistImageIfNeeded(customerCode, imageType, image, i);
             jdbcTemplate.update("""
-                            INSERT INTO crm_clue_images (customer_code, image_type, name, url, uid, sort_order)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                            INSERT INTO crm_clue_images (customer_code, image_type, name, url, uid, sort_order, size_bytes, content_type)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """,
-                    customerCode, imageType, image.name(), imageUrl, image.uid(), image.sortOrder() == null ? i : image.sortOrder());
+                    customerCode, imageType, image.name(), imageUrl, image.uid(), image.sortOrder() == null ? i : image.sortOrder(),
+                    imageSizeBytes(image), imageContentType(image, imageUrl));
+            persistedUrls.add(imageUrl);
         }
+        return persistedUrls;
     }
 
     private List<ImageFileDto> readImages(String customerCode, String imageType) {
         return jdbcTemplate.query("""
-                        SELECT name, url, uid, sort_order
+                        SELECT name, url, uid, sort_order, size_bytes, content_type
                         FROM crm_clue_images
                         WHERE customer_code = ? AND image_type = ?
                         ORDER BY sort_order, id
                         """,
-                (rs, rowNum) -> new ImageFileDto(rs.getString("name"), rs.getString("url"), rs.getString("uid"), rs.getInt("sort_order")),
+                (rs, rowNum) -> new ImageFileDto(
+                        rs.getString("name"),
+                        rs.getString("url"),
+                        rs.getString("uid"),
+                        rs.getInt("sort_order"),
+                        longOrNull(rs, "size_bytes"),
+                        rs.getString("content_type")
+                ),
                 customerCode,
                 imageType);
+    }
+
+    private List<String> readStoredImageUrls(String customerCode) {
+        return jdbcTemplate.query(
+                "SELECT url FROM crm_clue_images WHERE customer_code = ? AND url LIKE '/uploads/%'",
+                (rs, rowNum) -> rs.getString("url"),
+                customerCode);
+    }
+
+    private Long imageSizeBytes(ImageFileDto image) {
+        if (image == null) {
+            return null;
+        }
+        if (image.sizeBytes() != null && image.sizeBytes() >= 0) {
+            return image.sizeBytes();
+        }
+        String url = image.url();
+        if (!StringUtils.hasText(url) || !url.startsWith("data:image/")) {
+            return null;
+        }
+        int commaIndex = url.indexOf(',');
+        if (commaIndex < 0) {
+            return null;
+        }
+        try {
+            return (long) java.util.Base64.getDecoder().decode(url.substring(commaIndex + 1)).length;
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
+    }
+
+    private String imageContentType(ImageFileDto image, String imageUrl) {
+        if (image != null && StringUtils.hasText(image.contentType())) {
+            return image.contentType();
+        }
+        String source = image != null && StringUtils.hasText(image.url()) ? image.url() : imageUrl;
+        if (StringUtils.hasText(source) && source.startsWith("data:image/")) {
+            int semicolonIndex = source.indexOf(';');
+            return semicolonIndex > 5 ? source.substring(5, semicolonIndex) : null;
+        }
+        if (!StringUtils.hasText(imageUrl)) {
+            return null;
+        }
+        String lower = imageUrl.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        return null;
     }
 
     private void writeStatusHistory(String customerCode, List<StatusChangeRecord> rows) {
@@ -1873,6 +1943,11 @@ public class DatabaseStore {
 
     private Integer intOrNull(ResultSet rs, String columnName) throws SQLException {
         int value = rs.getInt(columnName);
+        return rs.wasNull() ? null : value;
+    }
+
+    private Long longOrNull(ResultSet rs, String columnName) throws SQLException {
+        long value = rs.getLong(columnName);
         return rs.wasNull() ? null : value;
     }
 

@@ -92,7 +92,7 @@
 <script setup>
 import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { ElTable, ElTableColumn, ElTag } from 'element-plus'
 import { exportPerformance, getEmployeeClues, getPerformance } from '../api/clue'
 import { downloadBlob, todayFilename } from '../utils/download'
 import AppPagination from '../components/AppPagination.vue'
@@ -101,6 +101,7 @@ import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
 import { addMethodText, sourcePlatformText } from '../utils/status'
 import { getStoredUser } from '../utils/session'
+import { showError } from '../utils/feedback'
 
 const EmployeeClueList = defineComponent({
   name: 'EmployeeClueList',
@@ -335,13 +336,6 @@ function positionText(position) {
     OPERATION: '运营',
     SALES: '销售'
   }[position] || position
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', {
-    confirmButtonText: '我知道了',
-    type: 'warning'
-  })
 }
 
 watch(() => page.size, () => {

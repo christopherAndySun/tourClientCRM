@@ -109,6 +109,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listUsers, updateUser } from '../api/auth'
+import { showError } from '../utils/feedback'
 
 const users = ref([])
 const loading = ref(false)
@@ -216,10 +217,6 @@ async function submitAdjust() {
 
 function positionText(position) {
   return { OPERATION: '运营', SALES: '销售' }[position] || position
-}
-
-function showError(message) {
-  return ElMessageBox.alert(message, '提示', { confirmButtonText: '我知道了', type: 'warning' })
 }
 
 onMounted(fetchUsers)

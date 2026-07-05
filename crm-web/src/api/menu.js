@@ -1,8 +1,7 @@
 import { http } from './http'
-import { FALLBACK_MENUS } from '../composables/menuConfig'
 
 export function listMenus() {
-  return http.get('/menus').catch(() => ({ success: true, data: FALLBACK_MENUS }))
+  return http.get('/menus')
 }
 
 export function saveMenus(data) {
