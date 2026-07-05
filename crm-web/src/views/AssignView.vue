@@ -381,10 +381,14 @@ async function submitAssign() {
 
 async function releaseRow(row) {
   try {
-    const { value } = await promptAction(`确认将客户 ${row.customerCode} 释放回销售公共池吗？释放后其他销售可以重新领取。`, '释放确认', {
-      confirmButtonText: '确认释放',
+    const { value } = await promptAction(`确认将客户 ${row.customerCode} 释放回销售公共池吗？释放后该线索会从你的销售池移出，其他销售可以重新领取。`, '释放确认', {
+      confirmButtonText: '确认释放回公共池',
+      cancelButtonText: '再想想',
+      type: 'warning',
       inputType: 'textarea',
-      inputPlaceholder: '可填写释放原因'
+      inputPlaceholder: '可填写释放原因',
+      closeOnClickModal: false,
+      closeOnPressEscape: false
     })
     await releaseClue(row.customerCode, { remark: value || '释放回公共池' })
     await showSuccess('已释放回销售公共池')
