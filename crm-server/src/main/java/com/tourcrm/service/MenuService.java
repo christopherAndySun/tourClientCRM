@@ -27,7 +27,8 @@ public class MenuService {
             new MenuItemRecord(AuthService.MENU_USERS, "MANAGE", "管理", "账号管理", "员工账号与权限配置", "/users", 30, true),
             new MenuItemRecord(AuthService.MENU_ORG, "MANAGE", "管理", "组织架构", "查看和调整部门、组长、组员关系", "/org", 40, true),
             new MenuItemRecord(AuthService.MENU_MENUS, "MANAGE", "管理", "菜单管理", "维护菜单名称、排序和启停", "/menus", 50, true),
-            new MenuItemRecord(AuthService.MENU_SETTINGS, "MANAGE", "管理", "系统设置", "维护 OCR 等系统级配置", "/settings", 60, true)
+            new MenuItemRecord(AuthService.MENU_SETTINGS, "MANAGE", "管理", "系统设置", "维护 OCR 等系统级配置", "/settings", 60, true),
+            new MenuItemRecord(AuthService.MENU_SYSTEM_AUDIT, "MANAGE", "管理", "系统审计", "查看登录、导出、下载和权限变更记录", "/system-audit", 70, true)
     );
 
     private final AuthService authService;

@@ -40,6 +40,7 @@ public class AuthService {
     public static final String MENU_ORG = "ORG";
     public static final String MENU_MENUS = "MENUS";
     public static final String MENU_SETTINGS = "SETTINGS";
+    public static final String MENU_SYSTEM_AUDIT = "SYSTEM_AUDIT";
 
     private static final String ADMIN_EMPLOYEE_CODE = "ADMIN";
     private static final String ADMIN_PASSWORD = "admin123";
@@ -61,7 +62,8 @@ public class AuthService {
             MENU_THIRD_PARTY_POOL,
             MENU_ORG,
             MENU_MENUS,
-            MENU_SETTINGS
+            MENU_SETTINGS,
+            MENU_SYSTEM_AUDIT
     );
     private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 

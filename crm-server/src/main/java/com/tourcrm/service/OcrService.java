@@ -72,10 +72,10 @@ public class OcrService {
             }
             return parseText(response.body());
         } catch (IOException error) {
-            throw new BusinessException("OCR 服务调用失败，请稍后重试");
+            throw new BusinessException("OCR 服务调用失败，请手动填写联系方式");
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
-            throw new BusinessException("OCR 服务调用被中断，请重试");
+            throw new BusinessException("OCR 服务调用被中断，请手动填写联系方式");
         }
     }
 

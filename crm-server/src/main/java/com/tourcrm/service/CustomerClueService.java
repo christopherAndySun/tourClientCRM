@@ -260,10 +260,16 @@ public class CustomerClueService {
         Optional<ClueResponse> oldOptional = findMutableClueForUpdate(customerCode);
         if (oldOptional.isPresent()) {
             ClueResponse old = oldOptional.get();
-            databaseStore.acquireContactLock(normalizeContact(request.contactInfo()));
-            ensureUniqueContactOnUpdate(request.contactInfo(), old);
+            String normalizedContact = normalizeContact(request.contactInfo());
+            databaseStore.acquireContactLock(normalizedContact);
+            Optional<String> mergeRoot = duplicateContactRoot(normalizedContact, old);
+            if (mergeRoot.isPresent() && !Boolean.TRUE.equals(request.allowRepeatDemand())) {
+                throwDuplicateContactError(mergeRoot.get());
+            }
             String status = normalizeStatus(request.status(), old.status());
             ensureFinalStatusHasDepositFlow(old, status);
+            boolean mergeAsRepeatDemand = mergeRoot.isPresent();
+            List<ClueResponse> mergeRootRows = mergeAsRepeatDemand ? databaseStore.findCluesByRootCustomerCode(mergeRoot.get()).stream().map(this::normalizeClue).toList() : List.of();
             ClueResponse updated = new ClueResponse(
                     old.customerCode(),
                     normalizeSourcePlatform(request.sourcePlatform(), old.sourcePlatform()),
@@ -279,9 +285,9 @@ public class CustomerClueService {
                     StringUtils.hasText(request.remark()) ? clean(request.remark()) : old.remark(),
                     safeImages(request.douyinImages()),
                     safeImages(request.wechatImages()),
-                    Boolean.TRUE.equals(old.repeatDemand()),
-                    old.originalCustomerCode(),
-                    old.demandSequence() == null ? 1 : old.demandSequence(),
+                    mergeAsRepeatDemand || Boolean.TRUE.equals(old.repeatDemand()),
+                    mergeAsRepeatDemand ? mergeRoot.get() : old.originalCustomerCode(),
+                    mergeAsRepeatDemand ? nextDemandSequence(mergeRootRows) : old.demandSequence() == null ? 1 : old.demandSequence(),
                     old.assignedSales(),
                     old.assignedSalesEmployeeCode(),
                     clean(request.depositAmount()),
@@ -958,26 +964,35 @@ public class CustomerClueService {
 
     private void ensureUniqueContactOnUpdate(String contactInfo, ClueResponse currentClue) {
         String normalizedContact = normalizeContact(contactInfo);
+        Optional<String> duplicateRoot = duplicateContactRoot(normalizedContact, currentClue);
+        if (duplicateRoot.isPresent()) {
+            throwDuplicateContactError(duplicateRoot.get());
+        }
+    }
+
+    private Optional<String> duplicateContactRoot(String normalizedContact, ClueResponse currentClue) {
         if (!StringUtils.hasText(normalizedContact)) {
-            return;
+            return Optional.empty();
         }
         String currentRoot = rootCustomerCode(currentClue);
         Optional<String> existingRoot = databaseStore.findRootCustomerCodeByContactKey(normalizedContact);
         if (existingRoot.isPresent() && !existingRoot.get().equals(currentRoot)) {
-            ClueResponse owner = databaseStore.findCluesByRootCustomerCode(existingRoot.get()).stream()
-                    .map(this::normalizeClue)
-                    .findFirst()
-                    .orElse(null);
-            String ownerName = owner == null ? "其他运营" : owner.uploader();
-            throw new BusinessException("\u5f53\u524d\u5ba2\u6237\u5df2\u7ecf\u88ab" + ownerName + "\u8054\u7cfb\u8fc7\uff0c\u8bf7\u4e0d\u8981\u91cd\u590d\u4fdd\u5b58");
+            return existingRoot;
         }
         Optional<ClueResponse> existing = databaseStore.findCluesByContactKey(normalizedContact).stream()
                 .map(this::normalizeClue)
                 .filter(item -> !rootCustomerCode(item).equals(currentRoot))
                 .findFirst();
-        if (existing.isPresent()) {
-            throw new BusinessException("\u5f53\u524d\u5ba2\u6237\u5df2\u7ecf\u88ab" + existing.get().uploader() + "\u8054\u7cfb\u8fc7\uff0c\u8bf7\u4e0d\u8981\u91cd\u590d\u4fdd\u5b58");
-        }
+        return existing.map(this::rootCustomerCode);
+    }
+
+    private void throwDuplicateContactError(String rootCustomerCode) {
+        ClueResponse owner = databaseStore.findCluesByRootCustomerCode(rootCustomerCode).stream()
+                .map(this::normalizeClue)
+                .findFirst()
+                .orElse(null);
+        String ownerName = owner == null ? "其他运营" : owner.uploader();
+        throw new BusinessException("当前客户已经被" + ownerName + "联系过，请不要重复保存");
     }
 
     private Optional<ClueResponse> findMutableClue(String customerCode) {

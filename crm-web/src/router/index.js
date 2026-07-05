@@ -19,6 +19,7 @@ const OperationLogView = () => import('../views/OperationLogView.vue')
 const OrgManageView = () => import('../views/OrgManageView.vue')
 const MenuManageView = () => import('../views/MenuManageView.vue')
 const SystemSettingsView = () => import('../views/SystemSettingsView.vue')
+const SystemAuditView = () => import('../views/SystemAuditView.vue')
 
 const routes = [
   { path: '/login', component: LoginView },
@@ -42,6 +43,7 @@ const routes = [
       { path: 'org', component: OrgManageView, meta: { menu: 'ORG', adminOnly: true } },
       { path: 'menus', component: MenuManageView, meta: { menu: 'MENUS', adminOnly: true } },
       { path: 'settings', component: SystemSettingsView, meta: { menu: 'SETTINGS', adminOnly: true } },
+      { path: 'system-audit', component: SystemAuditView, meta: { menu: 'SYSTEM_AUDIT', adminOnly: true } },
       { path: 'profile', component: ProfileView }
     ]
   }
@@ -102,7 +104,8 @@ function firstAllowedPath(user, menus = FALLBACK_MENUS) {
     ['USERS', '/users'],
     ['ORG', '/org'],
     ['MENUS', '/menus'],
-    ['SETTINGS', '/settings']
+    ['SETTINGS', '/settings'],
+    ['SYSTEM_AUDIT', '/system-audit']
   ]
   if (user?.role === 'ADMIN') {
     return menuPathMap.find(([menu]) => enabledCodes.has(menu))?.[1] || '/menus'

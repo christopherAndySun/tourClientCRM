@@ -16,7 +16,7 @@
       <el-form-item v-if="isEdit && form.assignedSales" label="分配销售"><el-input :model-value="`${form.assignedSales}（${form.assignedSalesEmployeeCode || '-'}）`" disabled /></el-form-item>
       <el-form-item label="客户联系方式"><el-input v-model="form.contactInfo" placeholder="非必填，客户加微信或提供手机号后再补充" /></el-form-item>
       <el-form-item label="是否有微信号"><el-radio-group v-model="form.hasWechatId"><el-radio-button :value="true">有</el-radio-button><el-radio-button :value="false">无</el-radio-button></el-radio-group></el-form-item>
-      <el-form-item label="抖音截图"><el-upload v-model:file-list="form.douyinImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-remove="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload><div class="upload-tip">{{ ocrRecognizing ? '正在识别第一张图片...' : '后续 OCR 只识别第一张图片，请把包含微信号或手机号的截图放在第一张。' }}</div></el-form-item>
+      <el-form-item label="抖音截图"><el-upload v-model:file-list="form.douyinImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-remove="(_, fileList) => syncUploadList('douyinImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload><div class="upload-tip">{{ ocrRecognizing ? '正在识别第一张图片...' : 'OCR 只识别第一张图片一次，没识别到就手动填写联系方式。' }}</div></el-form-item>
       <el-form-item label="微信截图"><el-upload v-model:file-list="form.wechatImages" class="crm-picture-upload" list-type="picture-card" accept="image/*" multiple :auto-upload="false" :on-change="(_, fileList) => syncUploadList('wechatImages', fileList)" :on-remove="(_, fileList) => syncUploadList('wechatImages', fileList)" :on-preview="previewImage"><el-icon><Plus /></el-icon></el-upload></el-form-item>
       <el-form-item :label="isEdit ? '本次跟进备注' : '备注'"><el-input v-model="form.remark" type="textarea" :rows="4" :placeholder="isEdit ? '填写本次沟通结果，例如：客户要和家人确认，明天下午再回访' : '客户需求、沟通要点等'" /></el-form-item>
       <section v-if="isEdit && historyDemands.length" class="status-history customer-history"><h2>历史需求</h2><div class="history-demand-list"><article v-for="item in historyDemands" :key="item.customerCode" class="history-demand-item"><button class="history-demand-card" type="button" @click="goHistoryDetail(item)"><div><strong>第 {{ item.demandSequence || 1 }} 次需求 · {{ item.customerCode }}</strong><span>{{ sourcePlatformText(item.sourcePlatform) }} · {{ addMethodText(item.addMethod) }} · 运营：{{ item.uploader || '-' }} · 销售：{{ item.assignedSales || '未分配' }}</span></div><StatusTag :status="item.status" /><small>{{ item.createdAt }}</small></button><div v-if="item.followRecords?.length" class="history-demand-follow-list"><div v-for="record in item.followRecords" :key="`${item.customerCode}-${record.createdAt}-${record.remark}`" class="history-demand-follow"><strong>{{ record.operator }}（{{ record.operatorCode }}）</strong><span>{{ record.createdAt }}</span><p>{{ record.remark }}</p></div></div><el-empty v-else class="history-demand-empty" description="该次需求暂无跟进记录" /></article></div></section>
@@ -51,6 +51,7 @@ const historyLoading = ref(false)
 const historyDemands = ref([])
 const isEdit = computed(() => Boolean(route.params.customerCode))
 const originalStatus = ref('NEW')
+const originalContactInfo = ref('')
 const reversedOperationLogs = computed(() => [...(form.operationLogs || [])].reverse())
 
 const form = reactive({
@@ -72,6 +73,7 @@ async function loadDetail() {
   }
   const loadedStatus = normalizeStatus(res.data.status)
   originalStatus.value = loadedStatus
+  originalContactInfo.value = res.data.contactInfo || ''
   Object.assign(form, {
     ...res.data,
     addMethod: res.data.addMethod || 'ACTIVE',
@@ -133,6 +135,7 @@ async function submit(allowRepeatDemand = false) {
         operationLogs: res.data?.operationLogs || [],
         remark: ''
       })
+      originalContactInfo.value = res.data?.contactInfo || ''
       ElMessage.success('客户线索已更新')
       router.back()
     } else {
@@ -146,6 +149,24 @@ async function submit(allowRepeatDemand = false) {
         confirmButtonText: '保存为本次新需求', cancelButtonText: '取消', type: 'warning'
       }).catch(() => 'cancel')
       if (action !== 'cancel') await submit(true)
+      return
+    }
+    if (isEdit.value && error?.message?.includes('请不要重复保存')) {
+      const action = await ElMessageBox.confirm(`${error.message}。请选择这次联系方式的处理方式。`, '发现已有客户', {
+        confirmButtonText: '合并为已有客户需求',
+        cancelButtonText: '不保存联系方式',
+        distinguishCancelAndClose: true,
+        type: 'warning'
+      }).catch((reason) => reason)
+      if (action === 'confirm') {
+        await submit(true)
+        return
+      }
+      if (action === 'cancel') {
+        form.contactInfo = originalContactInfo.value
+        await submit(false)
+        return
+      }
       return
     }
     await showError(error.message || '保存失败，请检查网络后重试')
@@ -230,7 +251,7 @@ async function recognizeFirstDouyinImage() {
     }
     ElMessage.warning(res.data?.message || '未识别到微信号或手机号，请手动填写联系方式')
   } catch (error) {
-    ElMessageBox.alert(error.message || 'OCR 识别失败，可以稍后重试或手动填写联系方式', 'OCR 识别失败', {
+    ElMessageBox.alert(error.message || 'OCR 识别失败，请手动填写联系方式', 'OCR 识别失败', {
       confirmButtonText: '我知道了',
       type: 'warning'
     })

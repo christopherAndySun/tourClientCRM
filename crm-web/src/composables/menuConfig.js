@@ -11,7 +11,8 @@ export const FALLBACK_MENUS = [
   { code: 'USERS', groupCode: 'MANAGE', groupName: '管理', name: '账号管理', description: '员工账号与权限配置', path: '/users', sort: 30, enabled: true },
   { code: 'ORG', groupCode: 'MANAGE', groupName: '管理', name: '组织架构', description: '查看和调整部门、组长、组员关系', path: '/org', sort: 40, enabled: true },
   { code: 'MENUS', groupCode: 'MANAGE', groupName: '管理', name: '菜单管理', description: '维护菜单名称、排序和启停', path: '/menus', sort: 50, enabled: true },
-  { code: 'SETTINGS', groupCode: 'MANAGE', groupName: '管理', name: '系统设置', description: '维护 OCR 等系统级配置', path: '/settings', sort: 60, enabled: true }
+  { code: 'SETTINGS', groupCode: 'MANAGE', groupName: '管理', name: '系统设置', description: '维护 OCR 等系统级配置', path: '/settings', sort: 60, enabled: true },
+  { code: 'SYSTEM_AUDIT', groupCode: 'MANAGE', groupName: '管理', name: '系统审计', description: '查看登录、导出、下载和权限变更记录', path: '/system-audit', sort: 70, enabled: true }
 ]
 
 export function groupMenus(menus = FALLBACK_MENUS) {
