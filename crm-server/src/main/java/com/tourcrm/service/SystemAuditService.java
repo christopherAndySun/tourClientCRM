@@ -80,7 +80,7 @@ public class SystemAuditService {
         List<SystemAuditLogRow> rows = jdbcTemplate.query("""
                         SELECT action, action_text, operator, operator_code, target_type, target_code, remark, created_at_text
                         FROM crm_system_audit_logs
-                        """ + "WHERE " + where + """
+                        """ + "WHERE " + where + " " + """
                         ORDER BY created_at_value DESC, id DESC
                         LIMIT ?, ?
                         """,
