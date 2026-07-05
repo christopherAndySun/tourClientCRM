@@ -11,3 +11,11 @@ export function listThirdPartyDownloaded(params = {}) {
 export function markThirdPartyDownloaded(customerCode) {
   return http.post(`/third-party-downloads/${customerCode}/mark-downloaded`)
 }
+
+export function restoreThirdPartyPending(customerCode) {
+  return http.post(`/third-party-downloads/${customerCode}/restore-pending`)
+}
+
+export function recordThirdPartyDownloadFailure(customerCode, message) {
+  return http.post(`/third-party-downloads/${customerCode}/record-failure`, { message })
+}

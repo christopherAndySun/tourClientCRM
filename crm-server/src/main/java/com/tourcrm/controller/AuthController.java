@@ -11,6 +11,7 @@ import com.tourcrm.dto.UserSession;
 import com.tourcrm.dto.UserUpdateRequest;
 import com.tourcrm.service.AuthService;
 import com.tourcrm.service.AuthTokenSupport;
+import com.tourcrm.service.SystemAuditService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
@@ -34,9 +35,11 @@ import java.util.List;
 public class AuthController {
 
     private final AuthService authService;
+    private final SystemAuditService systemAuditService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, SystemAuditService systemAuditService) {
         this.authService = authService;
+        this.systemAuditService = systemAuditService;
     }
 
     @PostMapping("/login")
@@ -47,6 +50,7 @@ public class AuthController {
     ) {
         AuthUserResponse loginUser = authService.login(request);
         writeAuthCookie(servletRequest, servletResponse, loginUser.token(), authService.sessionExpirationSeconds());
+        systemAuditService.recordUser(loginUser.name(), loginUser.employeeCode(), "LOGIN", "登录系统", "USER", loginUser.employeeCode(), "账号登录成功");
         return ApiResponse.ok(maskToken(loginUser));
     }
 
@@ -56,6 +60,7 @@ public class AuthController {
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse
     ) {
+        systemAuditService.record(token, "LOGOUT", "退出登录", "USER", "", "账号退出登录");
         authService.logout(token);
         writeAuthCookie(servletRequest, servletResponse, "", 0);
         return ApiResponse.ok(null);
@@ -103,7 +108,10 @@ public class AuthController {
             @RequestBody AuthRegisterRequest request,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(authService.createUser(request, token));
+        UserSession operator = authService.currentUser(token);
+        UserRecord created = authService.createUser(request, token);
+        systemAuditService.recordUser(operator.name(), operator.employeeCode(), "USER_CREATE", "新增账号", "USER", created.employeeCode(), "新增员工账号：" + created.name());
+        return ApiResponse.ok(created);
     }
 
     @PutMapping("/users/{employeeCode}")
@@ -112,7 +120,10 @@ public class AuthController {
             @RequestBody AdminUserUpdateRequest request,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(authService.updateUser(employeeCode, request, token));
+        UserSession operator = authService.currentUser(token);
+        UserRecord updated = authService.updateUser(employeeCode, request, token);
+        systemAuditService.recordUser(operator.name(), operator.employeeCode(), "USER_UPDATE", "修改账号", "USER", updated.employeeCode(), "修改员工账号：" + updated.name());
+        return ApiResponse.ok(updated);
     }
 
     @DeleteMapping("/users/{employeeCode}")
@@ -120,7 +131,10 @@ public class AuthController {
             @PathVariable String employeeCode,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        return ApiResponse.ok(authService.deleteUser(employeeCode, token));
+        UserSession operator = authService.currentUser(token);
+        Boolean deleted = authService.deleteUser(employeeCode, token);
+        systemAuditService.recordUser(operator.name(), operator.employeeCode(), "USER_DELETE", "删除账号", "USER", employeeCode, "删除员工账号");
+        return ApiResponse.ok(deleted);
     }
 
     private void writeAuthCookie(HttpServletRequest request, HttpServletResponse response, String token, long maxAgeSeconds) {

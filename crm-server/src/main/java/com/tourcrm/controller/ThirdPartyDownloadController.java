@@ -2,11 +2,13 @@ package com.tourcrm.controller;
 
 import com.tourcrm.common.ApiResponse;
 import com.tourcrm.dto.PageResponse;
+import com.tourcrm.dto.ThirdPartyDownloadFailureRequest;
 import com.tourcrm.dto.ThirdPartyDownloadResponse;
 import com.tourcrm.service.ThirdPartyDownloadService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -66,5 +68,22 @@ public class ThirdPartyDownloadController {
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
         return ApiResponse.ok(thirdPartyDownloadService.markDownloaded(customerCode, token));
+    }
+
+    @PostMapping("/{customerCode}/restore-pending")
+    public ApiResponse<Boolean> restorePending(
+            @PathVariable String customerCode,
+            @RequestHeader(value = "Authorization", required = false) String token
+    ) {
+        return ApiResponse.ok(thirdPartyDownloadService.restorePending(customerCode, token));
+    }
+
+    @PostMapping("/{customerCode}/record-failure")
+    public ApiResponse<Boolean> recordFailure(
+            @PathVariable String customerCode,
+            @RequestBody ThirdPartyDownloadFailureRequest request,
+            @RequestHeader(value = "Authorization", required = false) String token
+    ) {
+        return ApiResponse.ok(thirdPartyDownloadService.recordFailure(customerCode, request == null ? "" : request.message(), token));
     }
 }

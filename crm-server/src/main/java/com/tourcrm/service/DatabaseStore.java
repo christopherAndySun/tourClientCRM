@@ -305,6 +305,8 @@ public class DatabaseStore {
     }
 
     public PageResponse<ThirdPartyDownloadResponse> queryThirdPartyDownloadPage(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
             boolean downloaded,
             String keyword,
             String customerCode,
@@ -320,7 +322,7 @@ public class DatabaseStore {
             Integer pageSize
     ) {
         List<Object> params = new ArrayList<>();
-        String where = buildClueWhereSql(null, null, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, params);
+        String where = buildThirdPartyDownloadWhereSql(visibleUploaderCodes, visibleSalesCodes, keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, params);
         if (downloaded) {
             where += " AND EXISTS (SELECT 1 FROM crm_third_party_downloads tpd WHERE tpd.customer_code = crm_clues.customer_code)";
         } else {
@@ -350,6 +352,29 @@ public class DatabaseStore {
                 parseDateTime(downloadedAt)
         );
         return true;
+    }
+
+    public boolean restoreThirdPartyPending(String customerCode) {
+        int affected = jdbcTemplate.update("DELETE FROM crm_third_party_downloads WHERE customer_code = ?", customerCode);
+        return affected > 0;
+    }
+
+    public void recordThirdPartyDownloadLog(String customerCode, String action, String actionText, String operator, String operatorCode, String remark, String createdAt) {
+        jdbcTemplate.update("""
+                        INSERT INTO crm_third_party_download_logs (
+                          customer_code, action, action_text, operator, operator_code, remark, created_at_text, created_at_value
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                customerCode,
+                action,
+                actionText,
+                operator,
+                operatorCode,
+                remark,
+                createdAt,
+                parseDateTime(createdAt)
+        );
     }
 
     public PageResponse<ClueResponse> queryStatsDetailPage(
@@ -821,6 +846,89 @@ public class DatabaseStore {
                 appendInClause(where, params, "assigned_sales_employee_code", visibleSalesCodes);
             }
             where.append(")");
+        }
+        appendDateTimeRange(where, params, "created_at_value", startDate, endDate);
+        return where.toString();
+    }
+
+    private String buildThirdPartyDownloadWhereSql(
+            List<String> visibleUploaderCodes,
+            List<String> visibleSalesCodes,
+            String keyword,
+            String customerCode,
+            String contactInfo,
+            String sourcePlatform,
+            String addMethod,
+            String status,
+            String uploader,
+            String assignedSales,
+            String startDate,
+            String endDate,
+            List<Object> params
+    ) {
+        StringBuilder where = new StringBuilder("status <> 'DELETED'");
+        boolean hasUploaderScope = visibleUploaderCodes != null;
+        boolean hasSalesScope = visibleSalesCodes != null;
+        if (hasUploaderScope || hasSalesScope) {
+            where.append(" AND (");
+            boolean appended = false;
+            if (hasUploaderScope) {
+                appendInClause(where, params, "uploader_employee_code", visibleUploaderCodes);
+                appended = true;
+            }
+            if (hasSalesScope) {
+                if (appended) {
+                    where.append(" OR ");
+                }
+                appendInClause(where, params, "assigned_sales_employee_code", visibleSalesCodes);
+            }
+            where.append(")");
+        }
+        appendLike(where, params, "customer_code", customerCode);
+        appendLike(where, params, "contact_info", contactInfo);
+        if (StringUtils.hasText(sourcePlatform)) {
+            where.append(" AND source_platform = ?");
+            params.add(sourcePlatform.trim().toUpperCase(Locale.ROOT));
+        }
+        if (StringUtils.hasText(addMethod)) {
+            where.append(" AND add_method = ?");
+            params.add(addMethod.trim().toUpperCase(Locale.ROOT));
+        }
+        if (StringUtils.hasText(status)) {
+            where.append(" AND status = ?");
+            params.add(status.trim().toUpperCase(Locale.ROOT));
+        }
+        if (StringUtils.hasText(uploader)) {
+            where.append(" AND (LOWER(uploader) LIKE ? OR LOWER(uploader_employee_code) LIKE ?)");
+            String value = likeValue(uploader);
+            params.add(value);
+            params.add(value);
+        }
+        if (StringUtils.hasText(assignedSales)) {
+            where.append(" AND (LOWER(assigned_sales) LIKE ? OR LOWER(assigned_sales_employee_code) LIKE ?)");
+            String value = likeValue(assignedSales);
+            params.add(value);
+            params.add(value);
+        }
+        if (StringUtils.hasText(keyword)) {
+            where.append("""
+                    AND (
+                      LOWER(customer_code) LIKE ?
+                      OR LOWER(source_platform) LIKE ?
+                      OR LOWER(add_method) LIKE ?
+                      OR LOWER(contact_info) LIKE ?
+                      OR LOWER(remark) LIKE ?
+                      OR LOWER(status) LIKE ?
+                      OR LOWER(uploader) LIKE ?
+                      OR LOWER(uploader_employee_code) LIKE ?
+                      OR LOWER(assigned_sales) LIKE ?
+                      OR LOWER(assigned_sales_employee_code) LIKE ?
+                    )
+                    """);
+            String value = likeValue(keyword);
+            for (int i = 0; i < 10; i++) {
+                params.add(value);
+            }
         }
         appendDateTimeRange(where, params, "created_at_value", startDate, endDate);
         return where.toString();

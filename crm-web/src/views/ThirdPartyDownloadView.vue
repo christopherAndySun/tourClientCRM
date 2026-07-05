@@ -12,6 +12,16 @@
           @change="updateNotificationSound"
         />
       </div>
+      <el-button
+        v-if="activeTab === 'pending'"
+        class="desktop-batch-button"
+        type="primary"
+        :disabled="!selectedRows.length || batchDownloading"
+        :loading="batchDownloading"
+        @click="batchDownload"
+      >
+        批量下载
+      </el-button>
     </div>
 
     <el-alert
@@ -67,7 +77,8 @@
     </FilterPanel>
 
     <div class="panel desktop-table">
-      <el-table :data="rows" width="100%" v-loading="loading">
+      <el-table :data="rows" width="100%" v-loading="loading" @selection-change="handleSelectionChange">
+        <el-table-column v-if="activeTab === 'pending'" type="selection" width="48" />
         <el-table-column prop="customerCode" label="客户编号" min-width="130" />
         <el-table-column label="来源平台" min-width="100">
           <template #default="{ row }">{{ sourcePlatformText(row.sourcePlatform) }}</template>
@@ -90,12 +101,15 @@
           <template #default="{ row }">{{ userLabel(row.downloadedBy, row.downloadedByCode) }}</template>
         </el-table-column>
         <el-table-column prop="createdAt" label="上传时间" min-width="160" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <TextActions>
               <button class="table-action" type="button" @click="openDetail(row)">详情</button>
               <button class="table-action" type="button" :disabled="downloadingCode === row.customerCode" @click="downloadRow(row)">
                 {{ downloadingCode === row.customerCode ? '下载中' : '下载' }}
+              </button>
+              <button v-if="activeTab === 'downloaded'" class="table-action" type="button" :disabled="restoringCode === row.customerCode" @click="restoreRow(row)">
+                {{ restoringCode === row.customerCode ? '处理中' : '放回公共池' }}
               </button>
             </TextActions>
           </template>
@@ -122,6 +136,9 @@
           <button class="table-action" type="button" :disabled="downloadingCode === row.customerCode" @click="downloadRow(row)">
             {{ downloadingCode === row.customerCode ? '下载中' : '下载' }}
           </button>
+          <button v-if="activeTab === 'downloaded'" class="table-action" type="button" :disabled="restoringCode === row.customerCode" @click="restoreRow(row)">
+            {{ restoringCode === row.customerCode ? '处理中' : '放回公共池' }}
+          </button>
         </TextActions>
       </article>
       <div v-if="rows.length" class="mobile-load-state">
@@ -137,9 +154,15 @@
 <script setup>
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElNotification } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { getClue } from '../api/clue'
-import { listThirdPartyDownloaded, listThirdPartyPending, markThirdPartyDownloaded } from '../api/thirdPartyDownload'
+import {
+  listThirdPartyDownloaded,
+  listThirdPartyPending,
+  markThirdPartyDownloaded,
+  recordThirdPartyDownloadFailure,
+  restoreThirdPartyPending
+} from '../api/thirdPartyDownload'
 import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
@@ -161,8 +184,11 @@ const filterExpanded = ref(false)
 const mobileFilterVisible = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
+const batchDownloading = ref(false)
 const downloadingCode = ref('')
+const restoringCode = ref('')
 const rows = ref([])
+const selectedRows = ref([])
 const total = ref(0)
 const hasMore = ref(false)
 const page = reactive({ current: 1, size: 10 })
@@ -246,6 +272,7 @@ function searchRows() {
 function handleTabChange() {
   page.current = 1
   rows.value = []
+  selectedRows.value = []
   fetchRows()
 }
 
@@ -254,6 +281,10 @@ function openDetail(row) {
 }
 
 async function downloadRow(row) {
+  await downloadAndMark(row, { refresh: true })
+}
+
+async function downloadAndMark(row, { refresh = false } = {}) {
   downloadingCode.value = row.customerCode
   try {
     ElMessage.info('正在生成 Word 文档...')
@@ -263,12 +294,69 @@ async function downloadRow(row) {
       await markThirdPartyDownloaded(row.customerCode)
     }
     ElMessage.success(activeTab.value === 'pending' ? 'Word 文档已生成，客资已移入已下载列表' : 'Word 文档已生成')
-    await fetchRows()
+    return true
   } catch (error) {
+    await recordDownloadFailure(row.customerCode, error.message || '下载 Word 失败')
     await showError(error.message || '下载 Word 失败')
+    return false
   } finally {
     downloadingCode.value = ''
   }
+  if (refresh) {
+    await fetchRows()
+  }
+}
+
+async function batchDownload() {
+  if (!selectedRows.value.length) return
+  batchDownloading.value = true
+  let successCount = 0
+  try {
+    for (const row of selectedRows.value) {
+      if (await downloadAndMark(row)) {
+        successCount += 1
+      }
+    }
+    ElMessage.success(`批量下载完成，成功 ${successCount} 条，失败 ${selectedRows.value.length - successCount} 条`)
+  } finally {
+    batchDownloading.value = false
+    selectedRows.value = []
+    await fetchRows()
+  }
+}
+
+async function restoreRow(row) {
+  try {
+    await ElMessageBox.confirm(`确认将 ${row.customerCode} 放回公共池吗？`, '放回公共池', {
+      confirmButtonText: '确认放回',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  restoringCode.value = row.customerCode
+  try {
+    await restoreThirdPartyPending(row.customerCode)
+    ElMessage.success('已放回公共池')
+    await fetchRows()
+  } catch (error) {
+    await showError(error.message || '放回公共池失败')
+  } finally {
+    restoringCode.value = ''
+  }
+}
+
+async function recordDownloadFailure(customerCode, message) {
+  try {
+    await recordThirdPartyDownloadFailure(customerCode, message)
+  } catch (error) {
+    // 失败记录不阻塞前端提示，避免二次报错干扰运营处理。
+  }
+}
+
+function handleSelectionChange(selection) {
+  selectedRows.value = selection
 }
 
 function userLabel(name, code) {
@@ -351,6 +439,10 @@ onBeforeUnmount(() => {
   font-weight: 800;
   gap: 8px;
   margin-left: auto;
+}
+
+.desktop-batch-button {
+  margin-left: 12px;
 }
 
 .page-tip {

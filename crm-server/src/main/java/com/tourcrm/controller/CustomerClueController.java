@@ -16,6 +16,7 @@ import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.PerformanceExportRow;
 import com.tourcrm.dto.PerformanceRowResponse;
 import com.tourcrm.service.CustomerClueService;
+import com.tourcrm.service.SystemAuditService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,9 +40,11 @@ import java.util.List;
 public class CustomerClueController {
 
     private final CustomerClueService customerClueService;
+    private final SystemAuditService systemAuditService;
 
-    public CustomerClueController(CustomerClueService customerClueService) {
+    public CustomerClueController(CustomerClueService customerClueService, SystemAuditService systemAuditService) {
         this.customerClueService = customerClueService;
+        this.systemAuditService = systemAuditService;
     }
 
     @GetMapping
@@ -151,6 +154,7 @@ public class CustomerClueController {
         List<ClueExportRow> rows = customerClueService.listForExport(keyword, customerCode, contactInfo, sourcePlatform, addMethod, status, uploader, assignedSales, startDate, endDate, token).stream()
                 .map(ClueExportRow::new)
                 .toList();
+        systemAuditService.record(token, "CLUE_EXPORT", "导出客户线索", "CLUE_EXPORT", "", "导出客户线索 " + rows.size() + " 条");
         EasyExcel.write(response.getOutputStream(), ClueExportRow.class).sheet("客户线索").doWrite(rows);
     }
 
@@ -200,6 +204,7 @@ public class CustomerClueController {
         List<PerformanceExportRow> rows = customerClueService.performance(startDate, endDate, token).stream()
                 .map(PerformanceExportRow::new)
                 .toList();
+        systemAuditService.record(token, "PERFORMANCE_EXPORT", "导出员工绩效", "PERFORMANCE_EXPORT", "", "导出员工绩效 " + rows.size() + " 条");
         EasyExcel.write(response.getOutputStream(), PerformanceExportRow.class).sheet("员工绩效").doWrite(rows);
     }
 

@@ -299,6 +299,39 @@ public class DatabaseSchemaManager {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
         jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_third_party_download_logs (
+                  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                  customer_code VARCHAR(64) NOT NULL,
+                  action VARCHAR(32) NOT NULL,
+                  action_text VARCHAR(80) NULL,
+                  operator VARCHAR(80) NULL,
+                  operator_code VARCHAR(32) NULL,
+                  remark TEXT NULL,
+                  created_at_text VARCHAR(32) NULL,
+                  created_at_value DATETIME NULL,
+                  INDEX idx_crm_third_party_logs_code_time (customer_code, created_at_value),
+                  INDEX idx_crm_third_party_logs_action_time (action, created_at_value),
+                  INDEX idx_crm_third_party_logs_operator_time (operator_code, created_at_value)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_system_audit_logs (
+                  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                  action VARCHAR(64) NOT NULL,
+                  action_text VARCHAR(80) NULL,
+                  operator VARCHAR(80) NULL,
+                  operator_code VARCHAR(32) NULL,
+                  target_type VARCHAR(64) NULL,
+                  target_code VARCHAR(128) NULL,
+                  remark TEXT NULL,
+                  created_at_text VARCHAR(32) NULL,
+                  created_at_value DATETIME NULL,
+                  INDEX idx_crm_system_audit_action_time (action, created_at_value),
+                  INDEX idx_crm_system_audit_operator_time (operator_code, created_at_value),
+                  INDEX idx_crm_system_audit_target_time (target_type, target_code, created_at_value)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS crm_login_sessions (
                   token_hash CHAR(64) PRIMARY KEY,
                   employee_code VARCHAR(32) NOT NULL,
@@ -426,6 +459,12 @@ public class DatabaseSchemaManager {
         addIndexIfMissing("crm_deals", "idx_crm_deals_date_value", "CREATE INDEX idx_crm_deals_date_value ON crm_deals (deal_date_value)");
 
         addIndexIfMissing("crm_menus", "idx_crm_menus_group_sort", "CREATE INDEX idx_crm_menus_group_sort ON crm_menus (group_code, sort_no)");
+        addIndexIfMissing("crm_third_party_download_logs", "idx_crm_third_party_logs_code_time", "CREATE INDEX idx_crm_third_party_logs_code_time ON crm_third_party_download_logs (customer_code, created_at_value)");
+        addIndexIfMissing("crm_third_party_download_logs", "idx_crm_third_party_logs_action_time", "CREATE INDEX idx_crm_third_party_logs_action_time ON crm_third_party_download_logs (action, created_at_value)");
+        addIndexIfMissing("crm_third_party_download_logs", "idx_crm_third_party_logs_operator_time", "CREATE INDEX idx_crm_third_party_logs_operator_time ON crm_third_party_download_logs (operator_code, created_at_value)");
+        addIndexIfMissing("crm_system_audit_logs", "idx_crm_system_audit_action_time", "CREATE INDEX idx_crm_system_audit_action_time ON crm_system_audit_logs (action, created_at_value)");
+        addIndexIfMissing("crm_system_audit_logs", "idx_crm_system_audit_operator_time", "CREATE INDEX idx_crm_system_audit_operator_time ON crm_system_audit_logs (operator_code, created_at_value)");
+        addIndexIfMissing("crm_system_audit_logs", "idx_crm_system_audit_target_time", "CREATE INDEX idx_crm_system_audit_target_time ON crm_system_audit_logs (target_type, target_code, created_at_value)");
         addIndexIfMissing("crm_login_sessions", "idx_crm_sessions_employee", "CREATE INDEX idx_crm_sessions_employee ON crm_login_sessions (employee_code)");
         addIndexIfMissing("crm_login_sessions", "idx_crm_sessions_expires", "CREATE INDEX idx_crm_sessions_expires ON crm_login_sessions (expires_at)");
     }
@@ -437,6 +476,7 @@ public class DatabaseSchemaManager {
         jdbcTemplate.update("DELETE child FROM crm_clue_assign_logs child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
         jdbcTemplate.update("DELETE child FROM crm_clue_operation_logs child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
         jdbcTemplate.update("DELETE child FROM crm_third_party_downloads child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
+        jdbcTemplate.update("DELETE child FROM crm_third_party_download_logs child LEFT JOIN crm_clues parent ON parent.customer_code = child.customer_code WHERE parent.customer_code IS NULL");
     }
 
     private void tightenColumnTypesWhenSafe() {
