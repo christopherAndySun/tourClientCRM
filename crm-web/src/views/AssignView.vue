@@ -321,7 +321,13 @@ function canAssign(row) {
 }
 
 function canRelease(row) {
-  return !isSales.value && Boolean(row.assignedSalesEmployeeCode)
+  if (!row.assignedSalesEmployeeCode) {
+    return false
+  }
+  if (!isSales.value) {
+    return true
+  }
+  return poolType.value === 'MINE' && row.assignedSalesEmployeeCode === authStore.user?.employeeCode
 }
 
 async function claimRow(row) {

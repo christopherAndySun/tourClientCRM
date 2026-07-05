@@ -1,6 +1,7 @@
 package com.tourcrm.service;
 
 import com.tourcrm.common.BusinessException;
+import com.tourcrm.dto.ClueAssignRequest;
 import com.tourcrm.dto.ClueResponse;
 import com.tourcrm.dto.ClueSaveRequest;
 import com.tourcrm.dto.ClueStatusUpdateRequest;
@@ -90,6 +91,36 @@ class CustomerClueServiceTest {
         ArgumentCaptor<ClueResponse> captor = ArgumentCaptor.forClass(ClueResponse.class);
         verify(databaseStore).writeClue(captor.capture());
         assertThat(captor.getValue().assignLogs()).anyMatch(log -> "CLAIM_CONFLICT".equals(log.action()));
+    }
+
+    @Test
+    void salesCanReleaseOwnSalesPoolClue() {
+        when(authService.hasMenuPermission(TOKEN, AuthService.MENU_ASSIGN)).thenReturn(true);
+        when(authService.currentUser(TOKEN)).thenReturn(salesUser("SA", "销售A"));
+        when(databaseStore.findClueByCustomerCodeForUpdate("XA0705-01"))
+                .thenReturn(Optional.of(clue("XA0705-01", "", 1, "FOLLOWING", "SA", "销售A")));
+
+        service.releaseSalesClue("XA0705-01", new ClueAssignRequest("", "客户暂不跟进"), TOKEN);
+
+        ArgumentCaptor<ClueResponse> captor = ArgumentCaptor.forClass(ClueResponse.class);
+        verify(databaseStore).writeClue(captor.capture());
+        assertThat(captor.getValue().assignedSalesEmployeeCode()).isNull();
+        assertThat(captor.getValue().assignedSales()).isNull();
+        assertThat(captor.getValue().assignLogs()).anyMatch(log -> "RELEASE".equals(log.action()));
+    }
+
+    @Test
+    void salesCannotReleaseOtherSalesPoolClue() {
+        when(authService.hasMenuPermission(TOKEN, AuthService.MENU_ASSIGN)).thenReturn(true);
+        when(authService.currentUser(TOKEN)).thenReturn(salesUser("SA", "销售A"));
+        when(databaseStore.findClueByCustomerCodeForUpdate("XA0705-01"))
+                .thenReturn(Optional.of(clue("XA0705-01", "", 1, "FOLLOWING", "SB", "销售B")));
+
+        assertThatThrownBy(() -> service.releaseSalesClue("XA0705-01", new ClueAssignRequest("", "误操作"), TOKEN))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只能释放自己销售池里的线索");
+
+        verify(databaseStore, never()).writeClue(any());
     }
 
     @Test

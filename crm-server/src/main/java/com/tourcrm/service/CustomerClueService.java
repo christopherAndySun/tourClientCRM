@@ -425,6 +425,9 @@ public class CustomerClueService {
             if (!StringUtils.hasText(old.assignedSalesEmployeeCode())) {
                 throw new BusinessException("\u5f53\u524d\u7ebf\u7d22\u5c1a\u672a\u5206\u914d\u9500\u552e\uff0c\u65e0\u9700\u91ca\u653e");
             }
+            if ("SALES".equals(currentUser.position()) && !currentUser.employeeCode().equals(old.assignedSalesEmployeeCode())) {
+                throw new BusinessException("只能释放自己销售池里的线索");
+            }
             String remark = "\u91ca\u653e\u9500\u552e\u7ebf\u7d22" + appendRemark(request.remark());
             List<OperationLogRecord> operationLogs = assignOperationLogs(old, currentUser, null, null);
             ClueResponse updated = copyWithStatusAndLogs(
