@@ -6,9 +6,9 @@ spring:
     name: tour-client-crm
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/tour_client_crm?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci&serverTimezone=Asia/Shanghai
-    username: root
-    password: root
+    url: ${CRM_DB_URL:jdbc:mysql://localhost:3306/tour_client_crm?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_0900_ai_ci&serverTimezone=Asia/Shanghai}
+    username: ${CRM_DB_USERNAME:root}
+    password: ${CRM_DB_PASSWORD:root}
   servlet:
     multipart:
       max-file-size: 10MB
@@ -23,8 +23,9 @@ spring:
       force: true
 
 app:
-  upload-dir: uploads
-  jwt-secret: change-this-secret-to-a-long-random-value
-  jwt-expiration-minutes: 1440
+  upload-dir: ${CRM_UPLOAD_DIR:uploads}
+  jwt-secret: ${CRM_JWT_SECRET:change-this-secret-to-a-long-random-value}
+  settings-crypto-key: ${CRM_SETTINGS_CRYPTO_KEY:}
+  jwt-expiration-minutes: ${CRM_JWT_EXPIRATION_MINUTES:1440}
   auth:
-    single-login: false
+    single-login: ${CRM_SINGLE_LOGIN:false}

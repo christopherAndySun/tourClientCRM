@@ -73,6 +73,9 @@ router.beforeEach(async (to) => {
     const authStore = useAuthStore()
     const user = await ensureCurrentUser(authStore)
     if (user) {
+      if (user.mustChangePassword) {
+        return '/profile'
+      }
       return '/index'
     }
     clearSession()
@@ -83,6 +86,9 @@ router.beforeEach(async (to) => {
   if (!user) {
     clearSession()
     return '/login'
+  }
+  if (user.mustChangePassword && to.path !== '/profile') {
+    return '/profile'
   }
   const menus = await ensureMenus()
   if (to.meta.adminOnly && user?.role !== 'ADMIN') {

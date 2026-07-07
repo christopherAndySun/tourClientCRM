@@ -32,6 +32,7 @@ public class DatabaseSchemaManager {
                   employee_code VARCHAR(32) PRIMARY KEY,
                   name VARCHAR(80) NOT NULL,
                   password VARCHAR(255) NULL,
+                  must_change_password TINYINT NOT NULL DEFAULT 0,
                   role VARCHAR(32) NOT NULL,
                   position VARCHAR(32) NOT NULL,
                   leader_employee_code VARCHAR(32) NULL,
@@ -364,6 +365,7 @@ public class DatabaseSchemaManager {
 
     private void addMissingColumns() {
         addColumnIfMissing("crm_users", "password", "password VARCHAR(255) NULL");
+        addColumnIfMissing("crm_users", "must_change_password", "must_change_password TINYINT NOT NULL DEFAULT 0");
         addColumnIfMissing("crm_users", "org_type", "org_type VARCHAR(32) NOT NULL DEFAULT 'HEADQUARTERS'");
         addColumnIfMissing("crm_users", "branch_id", "branch_id VARCHAR(64) NULL");
         addColumnIfMissing("crm_users", "branch_name", "branch_name VARCHAR(120) NULL");

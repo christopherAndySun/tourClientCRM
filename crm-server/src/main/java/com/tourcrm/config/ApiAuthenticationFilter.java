@@ -42,6 +42,10 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             UserSession user = authService.currentUser(AuthTokenSupport.resolveFromRequest(request));
+            if (user.mustChangePassword() && !isPasswordChangeAllowed(request)) {
+                writeForbidden(response, "请先修改初始密码");
+                return;
+            }
             SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                     user,
                     null,
@@ -67,6 +71,22 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
             return false;
         }
         return !path.equals("/api/auth/login") && !path.startsWith("/api/health");
+    }
+
+    private boolean isPasswordChangeAllowed(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if (path.equals("/api/auth/logout")) {
+            return true;
+        }
+        return path.equals("/api/auth/me")
+                && ("GET".equalsIgnoreCase(request.getMethod()) || "PUT".equalsIgnoreCase(request.getMethod()));
+    }
+
+    private void writeForbidden(HttpServletResponse response, String message) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter().write(objectMapper.writeValueAsString(ApiResponse.fail(message)));
     }
 
     private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {

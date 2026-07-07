@@ -64,7 +64,25 @@ class ApiAuthenticationFilterTest {
         verify(authService).currentUser("cookie-token");
     }
 
+    @Test
+    void rejectsBusinessRequestWhenPasswordMustBeChanged() throws Exception {
+        when(authService.currentUser("cookie-token")).thenReturn(user(true));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/clues");
+        request.setCookies(new Cookie(AuthTokenSupport.COOKIE_NAME, "cookie-token"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("请先修改初始密码");
+    }
+
     private UserSession user() {
-        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, List.of("CLUES"));
+        return user(false);
+    }
+
+    private UserSession user(boolean mustChangePassword) {
+        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, mustChangePassword, List.of("CLUES"));
     }
 }

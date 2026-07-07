@@ -182,6 +182,7 @@ public class AuthService {
                 orgType,
                 branchId,
                 branchName,
+                true,
                 normalizeMenus(request.menuPermissions(), role, position),
                 LocalDateTime.now().format(DATE_TIME_FORMAT)
         );
@@ -222,6 +223,7 @@ public class AuthService {
             validateLeader(users, leaderEmployeeCode, position, orgType, branchId);
         }
         validateNameAndPassword(request.name(), request.password(), old.password());
+        boolean mustChangePassword = StringUtils.hasText(request.password()) || old.mustChangePassword();
         UserRecord updated = new UserRecord(
                 request.name().trim(),
                 old.employeeCode(),
@@ -232,6 +234,7 @@ public class AuthService {
                 orgType,
                 branchId,
                 branchName,
+                mustChangePassword,
                 normalizeMenus(request.menuPermissions(), role, position),
                 old.createdAt()
         );
@@ -269,6 +272,12 @@ public class AuthService {
             throw new BusinessException("当前账号不存在，请重新登录");
         }
         UserRecord old = oldOptional.get();
+        if (old.mustChangePassword() && !StringUtils.hasText(request.password())) {
+            throw new BusinessException("请先设置新密码");
+        }
+        if (old.mustChangePassword() && matchesPassword(request.password(), old.password())) {
+            throw new BusinessException("新密码不能和初始密码相同");
+        }
         validateNameAndPassword(request.name(), request.password(), old.password());
         UserRecord updated = new UserRecord(
                 request.name().trim(),
@@ -280,6 +289,7 @@ public class AuthService {
                 old.orgType(),
                 old.branchId(),
                 old.branchName(),
+                StringUtils.hasText(request.password()) ? false : old.mustChangePassword(),
                 old.menuPermissions(),
                 old.createdAt()
         );
@@ -447,13 +457,14 @@ public class AuthService {
                 user.orgType(),
                 user.branchId(),
                 user.branchName(),
+                user.mustChangePassword(),
                 user.menuPermissions(),
                 expiresAt.format(DATE_TIME_FORMAT)
         );
     }
 
     private UserSession toSession(UserRecord user) {
-        return new UserSession(user.name(), user.employeeCode(), user.role(), user.position(), user.leaderEmployeeCode(), user.orgType(), user.branchId(), user.branchName(), user.menuPermissions());
+        return new UserSession(user.name(), user.employeeCode(), user.role(), user.position(), user.leaderEmployeeCode(), user.orgType(), user.branchId(), user.branchName(), user.mustChangePassword(), user.menuPermissions());
     }
 
     private String createToken() {
@@ -486,6 +497,7 @@ public class AuthService {
                         old.orgType(),
                         old.branchId(),
                         old.branchName(),
+                        old.mustChangePassword(),
                         old.menuPermissions(),
                         old.createdAt()
                 )));
@@ -521,12 +533,15 @@ public class AuthService {
     }
 
     private UserRecord normalizeUser(UserRecord user) {
+        String employeeCode = normalizeEmployeeCode(user.employeeCode());
         String role = StringUtils.hasText(user.role()) ? user.role() : "EMPLOYEE";
         String position = StringUtils.hasText(user.position()) ? user.position() : "OPERATION";
         String orgType = normalizeOrgType(user.orgType(), position);
+        boolean mustChangePassword = user.mustChangePassword()
+                || (ADMIN_EMPLOYEE_CODE.equals(employeeCode) && matchesPassword(ADMIN_PASSWORD, user.password()));
         return new UserRecord(
                 user.name(),
-                normalizeEmployeeCode(user.employeeCode()),
+                employeeCode,
                 user.password(),
                 role,
                 position,
@@ -534,6 +549,7 @@ public class AuthService {
                 orgType,
                 normalizeBranchId(user.branchId(), orgType),
                 normalizeBranchName(user.branchName(), orgType),
+                mustChangePassword,
                 normalizeMenus(user.menuPermissions(), role, position),
                 user.createdAt()
         );
@@ -577,6 +593,7 @@ public class AuthService {
                 "HEADQUARTERS",
                 null,
                 null,
+                true,
                 List.copyOf(MENUS),
                 LocalDateTime.now().format(DATE_TIME_FORMAT)
         );

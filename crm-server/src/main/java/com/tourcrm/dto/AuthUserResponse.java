@@ -12,6 +12,7 @@ public record AuthUserResponse(
         String orgType,
         String branchId,
         String branchName,
+        boolean mustChangePassword,
         List<String> menuPermissions,
         String expiresAt
 ) {

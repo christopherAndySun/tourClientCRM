@@ -210,15 +210,15 @@ class CustomerClueServiceTest {
     }
 
     private UserSession operationUser() {
-        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, List.of(AuthService.MENU_CLUES, AuthService.MENU_CLUE_CREATE));
+        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, false, List.of(AuthService.MENU_CLUES, AuthService.MENU_CLUE_CREATE));
     }
 
     private UserSession salesUser(String code, String name) {
-        return new UserSession(name, code, "EMPLOYEE", "SALES", "", "HEADQUARTERS", null, null, List.of(AuthService.MENU_ASSIGN, AuthService.MENU_DEALS));
+        return new UserSession(name, code, "EMPLOYEE", "SALES", "", "HEADQUARTERS", null, null, false, List.of(AuthService.MENU_ASSIGN, AuthService.MENU_DEALS));
     }
 
     @SuppressWarnings("unused")
     private UserRecord userRecord(String code, String name, String position) {
-        return new UserRecord(name, code, "", "EMPLOYEE", position, null, "HEADQUARTERS", null, null, List.of(), "2026-07-05 10:00");
+        return new UserRecord(name, code, "", "EMPLOYEE", position, null, "HEADQUARTERS", null, null, false, List.of(), "2026-07-05 10:00");
     }
 }

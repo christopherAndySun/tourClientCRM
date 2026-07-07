@@ -83,7 +83,7 @@ class CustomerClueControllerApiTest {
     }
 
     private UserSession user() {
-        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, List.of("CLUES"));
+        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, false, List.of("CLUES"));
     }
 
     private ClueResponse clue() {

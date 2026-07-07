@@ -810,7 +810,7 @@ public class CustomerClueService {
     }
 
     private UserSession systemOperator() {
-        return new UserSession("\u7cfb\u7edf", "SYSTEM", "ADMIN", "SYSTEM", "", "HEADQUARTERS", null, null, List.of());
+        return new UserSession("\u7cfb\u7edf", "SYSTEM", "ADMIN", "SYSTEM", "", "HEADQUARTERS", null, null, false, List.of());
     }
 
     private void appendFieldLog(List<OperationLogRecord> logs, UserSession operator, String field, String fieldText, String oldValue, String newValue) {

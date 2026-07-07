@@ -160,6 +160,6 @@ class DealServiceTest {
     }
 
     private UserSession salesUser() {
-        return new UserSession("销售A", "SA", "EMPLOYEE", "SALES", "", "HEADQUARTERS", null, null, List.of(AuthService.MENU_DEALS));
+        return new UserSession("销售A", "SA", "EMPLOYEE", "SALES", "", "HEADQUARTERS", null, null, false, List.of(AuthService.MENU_DEALS));
     }
 }

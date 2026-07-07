@@ -12,6 +12,7 @@ public record UserRecord(
         String orgType,
         String branchId,
         String branchName,
+        boolean mustChangePassword,
         List<String> menuPermissions,
         String createdAt
 ) {

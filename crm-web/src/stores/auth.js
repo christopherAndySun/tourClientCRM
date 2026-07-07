@@ -32,6 +32,7 @@ export const useAuthStore = defineStore('auth', {
         orgType: data.orgType,
         branchId: data.branchId,
         branchName: data.branchName,
+        mustChangePassword: Boolean(data.mustChangePassword),
         menuPermissions: data.menuPermissions || []
       }
       setSessionMeta(data.expiresAt)

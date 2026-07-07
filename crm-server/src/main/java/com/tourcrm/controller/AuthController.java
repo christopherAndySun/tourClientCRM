@@ -159,6 +159,7 @@ public class AuthController {
                 user.orgType(),
                 user.branchId(),
                 user.branchName(),
+                user.mustChangePassword(),
                 user.menuPermissions(),
                 user.expiresAt()
         );

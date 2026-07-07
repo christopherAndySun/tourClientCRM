@@ -4,6 +4,8 @@ import com.tourcrm.common.BusinessException;
 import com.tourcrm.dto.AuthLoginRequest;
 import com.tourcrm.dto.AuthUserResponse;
 import com.tourcrm.dto.UserRecord;
+import com.tourcrm.dto.UserSession;
+import com.tourcrm.dto.UserUpdateRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
@@ -37,6 +39,16 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginReturnsMustChangePasswordFlag() {
+        UserRecord user = user("XA", new BCryptPasswordEncoder().encode("xa123456"), true);
+        when(userRepository.findUserByEmployeeCode("XA")).thenReturn(Optional.of(user));
+
+        AuthUserResponse response = authService.login(new AuthLoginRequest("XA", "xa123456"));
+
+        assertThat(response.mustChangePassword()).isTrue();
+    }
+
+    @Test
     void loginRejectsWrongPassword() {
         UserRecord user = user("XA", new BCryptPasswordEncoder().encode("xa123456"));
         when(userRepository.findUserByEmployeeCode("XA")).thenReturn(Optional.of(user));
@@ -46,7 +58,33 @@ class AuthServiceTest {
                 .hasMessageContaining("员工编号或密码错误");
     }
 
+    @Test
+    void forcedPasswordChangeRequiresNewPassword() {
+        UserRecord user = user("XA", new BCryptPasswordEncoder().encode("xa123456"), true);
+        when(loginSessionRepository.findSessionEmployeeCode("token")).thenReturn(Optional.of("XA"));
+        when(userRepository.findUserByEmployeeCode("XA")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> authService.updateCurrentUser(new UserUpdateRequest("小白", ""), "Bearer token"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请先设置新密码");
+    }
+
+    @Test
+    void selfPasswordUpdateClearsForcedPasswordChange() {
+        UserRecord user = user("XA", new BCryptPasswordEncoder().encode("xa123456"), true);
+        when(loginSessionRepository.findSessionEmployeeCode("token")).thenReturn(Optional.of("XA"));
+        when(userRepository.findUserByEmployeeCode("XA")).thenReturn(Optional.of(user));
+
+        UserSession updated = authService.updateCurrentUser(new UserUpdateRequest("小白", "new123456"), "Bearer token");
+
+        assertThat(updated.mustChangePassword()).isFalse();
+    }
+
     private UserRecord user(String employeeCode, String password) {
+        return user(employeeCode, password, false);
+    }
+
+    private UserRecord user(String employeeCode, String password, boolean mustChangePassword) {
         return new UserRecord(
                 "小白",
                 employeeCode,
@@ -57,6 +95,7 @@ class AuthServiceTest {
                 "HEADQUARTERS",
                 null,
                 null,
+                mustChangePassword,
                 List.of(AuthService.MENU_CLUES, AuthService.MENU_CLUE_CREATE),
                 "2026-07-05 10:00"
         );

@@ -94,7 +94,7 @@ class ThirdPartyDownloadControllerApiTest {
     }
 
     private UserSession user() {
-        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, List.of("THIRD_PARTY_POOL"));
+        return new UserSession("小白", "XA", "EMPLOYEE", "OPERATION", "", "HEADQUARTERS", null, null, false, List.of("THIRD_PARTY_POOL"));
     }
 
     private ClueResponse clue() {
