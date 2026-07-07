@@ -11,8 +11,11 @@ http.interceptors.response.use(
   (response) => {
     if (response.data?.success === false) {
       const message = response.data.message || '操作失败'
-      if (message.includes('请先登录') || message.includes('登录已过期')) {
+      if (isLoginExpired(message)) {
         redirectToLogin()
+      }
+      if (isPasswordChangeRequired(message)) {
+        redirectToProfile()
       }
       return Promise.reject(new Error(message))
     }
@@ -22,11 +25,15 @@ http.interceptors.response.use(
 )
 
 function normalizeHttpError(error) {
+  const message = error?.response?.data?.message
   if (error?.response?.status === 401) {
     redirectToLogin()
   }
-  if (error?.response?.data?.message) {
-    return new Error(error.response.data.message)
+  if (message) {
+    if (isPasswordChangeRequired(message)) {
+      redirectToProfile()
+    }
+    return new Error(message)
   }
   if (error?.response?.status) {
     return new Error(`请求失败，状态码：${error.response.status}`)
@@ -37,9 +44,23 @@ function normalizeHttpError(error) {
   return new Error(error?.message || '网络异常，请稍后重试')
 }
 
+function isLoginExpired(message) {
+  return message.includes('请先登录') || message.includes('登录已过期')
+}
+
+function isPasswordChangeRequired(message) {
+  return message.includes('请先修改初始密码')
+}
+
 function redirectToLogin() {
   clearSession()
   if (window.location.pathname !== '/login') {
     window.location.href = '/login'
+  }
+}
+
+function redirectToProfile() {
+  if (window.location.pathname !== '/profile') {
+    window.location.href = '/profile'
   }
 }
