@@ -1,5 +1,6 @@
 crm-web/node_modules/
 crm-web/dist/
+crm-web/test-results/
 crm-server/target/
 crm-server/data/
 crm-server/uploads/

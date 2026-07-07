@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
 import { getCurrentUser, login, logout as logoutRequest, updateCurrentUser } from '../api/auth'
-import { clearSession, getStoredUser, isSessionActive, setSessionStorage, updateStoredUser } from '../utils/session'
+import { clearSession, isSessionActive, setSessionMeta } from '../utils/session'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: isSessionActive() ? 'cookie-session' : '',
-    user: getStoredUser()
+    user: null
   }),
   actions: {
     async loginWithPassword(form) {
@@ -15,12 +15,11 @@ export const useAuthStore = defineStore('auth', {
     async fetchCurrentUser() {
       const res = assertSuccess(await getCurrentUser())
       this.user = res.data
-      updateStoredUser(res.data)
+      this.token = 'cookie-session'
     },
     async updateProfile(form) {
       const res = assertSuccess(await updateCurrentUser(form))
       this.user = res.data
-      updateStoredUser(res.data)
     },
     setSession(data) {
       this.token = 'cookie-session'
@@ -35,7 +34,7 @@ export const useAuthStore = defineStore('auth', {
         branchName: data.branchName,
         menuPermissions: data.menuPermissions || []
       }
-      setSessionStorage(this.user, data.expiresAt)
+      setSessionMeta(data.expiresAt)
     },
     async logout() {
       try {

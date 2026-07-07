@@ -100,7 +100,6 @@ import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
 import { addMethodText, sourcePlatformText } from '../utils/status'
-import { getStoredUser } from '../utils/session'
 import { runAction, showError } from '../utils/feedback'
 
 const EmployeeClueList = defineComponent({
@@ -185,7 +184,7 @@ const employeeClues = ref([])
 const employeeClueTotal = ref(0)
 const page = reactive({ current: 1, size: 10 })
 const detailPage = reactive({ current: 1, size: 10 })
-const currentUser = computed(() => authStore.user || getStoredUser())
+const currentUser = computed(() => authStore.user)
 const isEmployeeOnly = computed(() => currentUser.value?.role === 'EMPLOYEE')
 
 const detailTitle = computed(() => {

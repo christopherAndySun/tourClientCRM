@@ -12,6 +12,10 @@ export function getClueHistory(customerCode) {
   return http.get(`/clues/${customerCode}/history`)
 }
 
+export function getCustomerProfile(rootCustomerCode) {
+  return http.get(`/customers/${rootCustomerCode}`)
+}
+
 export function createClue(data) {
   return http.post('/clues', data, { timeout: 60000 })
 }

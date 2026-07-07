@@ -9,24 +9,12 @@ export function isSessionActive() {
     clearSession()
     return false
   }
-  return Boolean(localStorage.getItem(USER_KEY))
+  return Boolean(localStorage.getItem(EXPIRES_KEY))
 }
 
-export function getStoredUser() {
-  if (isSessionExpired()) {
-    clearSession()
-    return null
-  }
-  return JSON.parse(localStorage.getItem(USER_KEY) || 'null')
-}
-
-export function setSessionStorage(user, expiresAt) {
-  localStorage.setItem(USER_KEY, JSON.stringify(user || null))
+export function setSessionMeta(expiresAt) {
   localStorage.setItem(EXPIRES_KEY, resolveExpiresAt(expiresAt))
-}
-
-export function updateStoredUser(user) {
-  localStorage.setItem(USER_KEY, JSON.stringify(user || null))
+  localStorage.removeItem(USER_KEY)
 }
 
 export function clearSession() {

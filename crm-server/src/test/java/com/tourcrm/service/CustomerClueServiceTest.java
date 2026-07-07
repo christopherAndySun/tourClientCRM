@@ -28,8 +28,11 @@ class CustomerClueServiceTest {
     private static final String TOKEN = "token";
     private final AuthService authService = mock(AuthService.class);
     private final DatabaseStore databaseStore = mock(DatabaseStore.class);
+    private final CustomerClueRepository customerClueRepository = mock(CustomerClueRepository.class);
+    private final StatsQueryService statsQueryService = mock(StatsQueryService.class);
     private final RealtimeEventService realtimeEventService = mock(RealtimeEventService.class);
-    private final CustomerClueService service = new CustomerClueService(authService, databaseStore, realtimeEventService);
+    private final DingTalkClueNotificationService dingTalkClueNotificationService = mock(DingTalkClueNotificationService.class);
+    private final CustomerClueService service = new CustomerClueService(authService, databaseStore, customerClueRepository, statsQueryService, realtimeEventService, dingTalkClueNotificationService);
 
     @Test
     void createRejectsDuplicateContactFromCustomerProfile() {
@@ -72,6 +75,21 @@ class CustomerClueServiceTest {
         when(databaseStore.findCluesByRootCustomerCode("XA0705-01")).thenReturn(List.of(clue("XA0705-01", "", 1, "NEW", "", null)));
 
         assertThatThrownBy(() -> service.update("XB0705-02", saveRequest("wx123", false, false), TOKEN))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请不要重复保存");
+
+        verify(databaseStore, never()).writeClue(any());
+    }
+
+    @Test
+    void updateRejectsDuplicateContactEvenWhenRepeatDemandIsAllowed() {
+        ClueResponse current = clue("XB0705-02", "", 1, "NEW", "", null);
+        when(authService.currentUser(TOKEN)).thenReturn(operationUser());
+        when(databaseStore.findClueByCustomerCodeForUpdate("XB0705-02")).thenReturn(Optional.of(current));
+        when(databaseStore.findRootCustomerCodeByContactKey("wx123")).thenReturn(Optional.of("XA0705-01"));
+        when(databaseStore.findCluesByRootCustomerCode("XA0705-01")).thenReturn(List.of(clue("XA0705-01", "", 1, "NEW", "", null)));
+
+        assertThatThrownBy(() -> service.update("XB0705-02", saveRequest("wx123", true, false), TOKEN))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("请不要重复保存");
 

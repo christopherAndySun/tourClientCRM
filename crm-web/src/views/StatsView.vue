@@ -105,7 +105,6 @@ import AppPagination from '../components/AppPagination.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import { useAuthStore } from '../stores/auth'
-import { getStoredUser } from '../utils/session'
 import { addMethodText } from '../utils/status'
 import { showError } from '../utils/feedback'
 
@@ -152,7 +151,7 @@ const stats = reactive({
   uploaderCounts: {},
   salesCounts: {}
 })
-const currentUser = computed(() => authStore.user || getStoredUser())
+const currentUser = computed(() => authStore.user)
 const showOperationAttribution = computed(() => currentUser.value?.role === 'ADMIN' || currentUser.value?.position === 'OPERATION')
 const showSalesAttribution = computed(() => currentUser.value?.role === 'ADMIN' || currentUser.value?.position === 'SALES')
 const visibleAttributionSections = computed(() => [
@@ -195,9 +194,9 @@ const salesTree = computed(() => showSalesAttribution.value ? buildEmployeeTree(
 async function fetchStats() {
   loading.value = true
   try {
-    const [statsRes, performanceRes] = await Promise.all([
+    const [statsRes, performanceRowsRes] = await Promise.all([
       getClueStats(currentDateParams()),
-      getPerformance(currentDateParams())
+      fetchAllPerformanceRows()
     ])
     Object.assign(stats, {
       totalCount: 0,
@@ -209,10 +208,35 @@ async function fetchStats() {
       salesCounts: {},
       ...(statsRes.data || {})
     })
-    performanceRows.value = performanceRes.data || []
+    performanceRows.value = performanceRowsRes
+  } catch (error) {
+    performanceRows.value = []
+    await showError(error.message || '数据统计加载失败')
   } finally {
     loading.value = false
   }
+}
+
+async function fetchAllPerformanceRows() {
+  const pageSize = 100
+  const maxPages = 50
+  let page = 1
+  let rows = []
+  let hasMore = true
+
+  while (hasMore && page <= maxPages) {
+    const res = await getPerformance({
+      ...currentDateParams(),
+      page,
+      pageSize
+    })
+    const payload = normalizePerformancePage(res.data)
+    rows = rows.concat(payload.records)
+    hasMore = payload.hasMore
+    page += 1
+  }
+
+  return rows
 }
 
 async function openDetail(type, value, title, overrideDates = null) {
@@ -266,6 +290,16 @@ function currentDateParams(overrideDates = null) {
 
 function statusCount(status) {
   return stats.statusCounts?.[status] || 0
+}
+
+function normalizePerformancePage(data) {
+  if (Array.isArray(data)) {
+    return { records: data, hasMore: false }
+  }
+  return {
+    records: Array.isArray(data?.records) ? data.records : [],
+    hasMore: Boolean(data?.hasMore)
+  }
 }
 
 function buildEmployeeTree(sourceRows) {

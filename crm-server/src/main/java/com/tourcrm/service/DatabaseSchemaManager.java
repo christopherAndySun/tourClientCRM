@@ -8,9 +8,11 @@ import org.springframework.stereotype.Component;
 public class DatabaseSchemaManager {
 
     private final JdbcTemplate jdbcTemplate;
+    private final DatabaseMigrationService databaseMigrationService;
 
-    public DatabaseSchemaManager(JdbcTemplate jdbcTemplate) {
+    public DatabaseSchemaManager(JdbcTemplate jdbcTemplate, DatabaseMigrationService databaseMigrationService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.databaseMigrationService = databaseMigrationService;
     }
 
     @PostConstruct
@@ -21,9 +23,7 @@ public class DatabaseSchemaManager {
         backfillTypedColumnsSafely();
         addMissingIndexes();
         backfillCustomerProfiles();
-        cleanupOrphanChildRows();
-        addMissingForeignKeys();
-        dropLegacyPayloadColumns();
+        databaseMigrationService.runMaintenanceMigrations();
     }
 
     private void createTables() {
@@ -162,6 +162,22 @@ public class DatabaseSchemaManager {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
         jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS crm_ocr_call_logs (
+                  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                  image_key VARCHAR(1024) NOT NULL,
+                  image_url VARCHAR(1024) NULL,
+                  status VARCHAR(32) NOT NULL,
+                  candidates_json TEXT NULL,
+                  full_text MEDIUMTEXT NULL,
+                  error_message TEXT NULL,
+                  operator_code VARCHAR(32) NULL,
+                  operator_name VARCHAR(80) NULL,
+                  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  INDEX idx_crm_ocr_logs_image_key (image_key(255)),
+                  INDEX idx_crm_ocr_logs_operator_time (operator_code, created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+        jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS crm_clue_status_history (
                   id BIGINT AUTO_INCREMENT PRIMARY KEY,
                   customer_code VARCHAR(64) NOT NULL,
@@ -282,6 +298,8 @@ public class DatabaseSchemaManager {
                   id TINYINT PRIMARY KEY,
                   ocr_app_code VARCHAR(255) NULL,
                   ocr_app_secret VARCHAR(1024) NULL,
+                  dingtalk_hq_clue_webhook VARCHAR(2048) NULL,
+                  dingtalk_hq_clue_enabled TINYINT NOT NULL DEFAULT 0,
                   remark TEXT NULL,
                   updated_at_text VARCHAR(32) NULL,
                   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -410,6 +428,8 @@ public class DatabaseSchemaManager {
         addColumnIfMissing("crm_menus", "path", "path VARCHAR(255) NULL");
         addColumnIfMissing("crm_system_settings", "ocr_app_code", "ocr_app_code VARCHAR(255) NULL");
         addColumnIfMissing("crm_system_settings", "ocr_app_secret", "ocr_app_secret VARCHAR(1024) NULL");
+        addColumnIfMissing("crm_system_settings", "dingtalk_hq_clue_webhook", "dingtalk_hq_clue_webhook VARCHAR(2048) NULL");
+        addColumnIfMissing("crm_system_settings", "dingtalk_hq_clue_enabled", "dingtalk_hq_clue_enabled TINYINT NOT NULL DEFAULT 0");
         addColumnIfMissing("crm_system_settings", "remark", "remark TEXT NULL");
         addColumnIfMissing("crm_system_settings", "updated_at_text", "updated_at_text VARCHAR(32) NULL");
     }
@@ -506,6 +526,7 @@ public class DatabaseSchemaManager {
             jdbcTemplate.execute("ALTER TABLE crm_clue_images MODIFY url VARCHAR(1024) NULL");
         }
         jdbcTemplate.execute("ALTER TABLE crm_system_settings MODIFY ocr_app_secret VARCHAR(1024) NULL");
+        jdbcTemplate.execute("ALTER TABLE crm_system_settings MODIFY dingtalk_hq_clue_webhook VARCHAR(2048) NULL");
     }
 
     private void backfillTypedColumnsSafely() {

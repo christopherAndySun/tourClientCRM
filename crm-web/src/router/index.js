@@ -1,12 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { listMenus } from '../api/menu'
 import { FALLBACK_MENUS, mergeMenus } from '../composables/menuConfig'
-import { getStoredUser, isSessionActive } from '../utils/session'
+import { useAuthStore } from '../stores/auth'
+import { clearSession, isSessionActive } from '../utils/session'
 
 const LoginView = () => import('../views/LoginView.vue')
 const DashboardView = () => import('../views/DashboardView.vue')
 const ClueListView = () => import('../views/ClueListView.vue')
 const ClueCreateView = () => import('../views/ClueCreateView.vue')
+const CustomerProfileView = () => import('../views/CustomerProfileView.vue')
 const StatsView = () => import('../views/StatsView.vue')
 const UserManageView = () => import('../views/UserManageView.vue')
 const ProfileView = () => import('../views/ProfileView.vue')
@@ -31,6 +33,7 @@ const routes = [
       { path: 'clues', component: ClueListView, meta: { menu: 'CLUES' } },
       { path: 'clues/create', component: ClueCreateView, meta: { menu: 'CLUE_CREATE' } },
       { path: 'clues/:customerCode', component: ClueCreateView, meta: { anyMenu: ['CLUES', 'ASSIGN', 'DEALS', 'PERFORMANCE', 'OPERATION_LOGS', 'THIRD_PARTY_POOL'] } },
+      { path: 'customers/:rootCustomerCode', component: CustomerProfileView, meta: { anyMenu: ['CLUES', 'ASSIGN', 'DEALS', 'PERFORMANCE', 'OPERATION_LOGS', 'THIRD_PARTY_POOL'] } },
       { path: 'assign', component: AssignView, meta: { menu: 'ASSIGN' } },
       { path: 'assign-logs', component: AssignLogView, meta: { menu: 'ASSIGN_LOGS' } },
       { path: 'index', component: StatsView, meta: { menu: 'STATS' } },
@@ -63,13 +66,24 @@ router.beforeEach(async (to) => {
   if (to.path !== '/login' && !sessionActive) {
     return '/login'
   }
-  if (to.path === '/login' && sessionActive) {
-    return '/index'
-  }
   if (to.path === '/login') {
+    if (!sessionActive) {
+      return true
+    }
+    const authStore = useAuthStore()
+    const user = await ensureCurrentUser(authStore)
+    if (user) {
+      return '/index'
+    }
+    clearSession()
     return true
   }
-  const user = getStoredUser()
+  const authStore = useAuthStore()
+  const user = await ensureCurrentUser(authStore)
+  if (!user) {
+    clearSession()
+    return '/login'
+  }
   const menus = await ensureMenus()
   if (to.meta.adminOnly && user?.role !== 'ADMIN') {
     return firstAllowedPath(user, menus)
@@ -88,6 +102,18 @@ router.beforeEach(async (to) => {
   }
   return true
 })
+
+async function ensureCurrentUser(authStore) {
+  if (authStore.user) {
+    return authStore.user
+  }
+  try {
+    await authStore.fetchCurrentUser()
+    return authStore.user
+  } catch (error) {
+    return null
+  }
+}
 
 function firstAllowedPath(user, menus = FALLBACK_MENUS) {
   const enabledCodes = new Set(menus.filter((menu) => menu.enabled || menu.code === 'MENUS').map((menu) => menu.code))

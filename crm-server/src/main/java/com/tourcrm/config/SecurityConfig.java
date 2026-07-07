@@ -28,7 +28,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
-                .addFilterBefore(apiCsrfProtectionFilter, ApiAuthenticationFilter.class)
+                .addFilterBefore(apiCsrfProtectionFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(apiAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

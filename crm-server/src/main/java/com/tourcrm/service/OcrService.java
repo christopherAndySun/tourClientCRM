@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tourcrm.common.BusinessException;
 import com.tourcrm.dto.OcrRecognizeResponse;
 import com.tourcrm.dto.SystemSettingsRecord;
+import com.tourcrm.dto.UserSession;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -13,7 +14,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,26 +36,50 @@ public class OcrService {
     private final ObjectMapper objectMapper;
     private final SystemSettingsService systemSettingsService;
     private final FileStorageService fileStorageService;
+    private final OcrCallLogRepository ocrCallLogRepository;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    public OcrService(ObjectMapper objectMapper, SystemSettingsService systemSettingsService, FileStorageService fileStorageService) {
+    public OcrService(
+            ObjectMapper objectMapper,
+            SystemSettingsService systemSettingsService,
+            FileStorageService fileStorageService,
+            OcrCallLogRepository ocrCallLogRepository
+    ) {
         this.objectMapper = objectMapper;
         this.systemSettingsService = systemSettingsService;
         this.fileStorageService = fileStorageService;
+        this.ocrCallLogRepository = ocrCallLogRepository;
     }
 
     public OcrRecognizeResponse recognizeWechatId(String imageBase64) {
-        return recognizeWechatId(imageBase64, "");
+        return recognizeWechatId(imageBase64, "", null);
     }
 
     public OcrRecognizeResponse recognizeWechatId(String imageBase64, String imageUrl) {
-        String normalizedImage = normalizeImageBase64(imageBase64);
-        if (!StringUtils.hasText(normalizedImage) && StringUtils.hasText(imageUrl)) {
-            normalizedImage = fileStorageService.readStoredImageAsBase64(imageUrl);
+        return recognizeWechatId(imageBase64, imageUrl, null);
+    }
+
+    public OcrRecognizeResponse recognizeWechatId(String imageBase64, String imageUrl, UserSession operator) {
+        String normalizedUrl = imageUrl == null ? "" : imageUrl.trim();
+        String normalizedBase64 = normalizeImageBase64(imageBase64);
+        String imageKey = StringUtils.hasText(normalizedUrl) ? normalizedUrl : hash(normalizedBase64);
+        if (StringUtils.hasText(imageKey)) {
+            var cached = ocrCallLogRepository.findLatestByImageKey(imageKey);
+            if (cached.isPresent()) {
+                return cached.get().toResponse();
+            }
         }
-        if (!StringUtils.hasText(normalizedImage)) {
+
+        String imagePayload = "";
+        if (StringUtils.hasText(normalizedUrl)) {
+            imagePayload = fileStorageService.readStoredImageAsBase64(normalizedUrl);
+        }
+        if (!StringUtils.hasText(imagePayload)) {
+            imagePayload = normalizedBase64;
+        }
+        if (!StringUtils.hasText(imagePayload)) {
             throw new BusinessException("请先上传抖音截图第一张图片");
         }
 
@@ -59,10 +88,17 @@ public class OcrService {
             throw new BusinessException("请先在系统设置中配置 OCR APP CODE");
         }
 
-        String fullText = callOcr(settings.ocrAppCode(), normalizedImage);
-        List<String> candidates = extractCandidates(fullText);
-        String message = candidates.isEmpty() ? "未识别到微信号或手机号" : "识别成功";
-        return new OcrRecognizeResponse(candidates, fullText, message);
+        try {
+            String fullText = callOcr(settings.ocrAppCode(), imagePayload);
+            List<String> candidates = extractCandidates(fullText);
+            String status = candidates.isEmpty() ? "NO_MATCH" : "SUCCESS";
+            String message = candidates.isEmpty() ? "未识别到微信号或手机号" : "识别成功";
+            record(imageKey, normalizedUrl, status, candidates, fullText, "", operator);
+            return new OcrRecognizeResponse(candidates, fullText, message);
+        } catch (BusinessException error) {
+            record(imageKey, normalizedUrl, "FAILED", List.of(), "", error.getMessage(), operator);
+            throw error;
+        }
     }
 
     private String callOcr(String appCode, String imageBase64) {
@@ -131,7 +167,7 @@ public class OcrService {
     }
 
     private String cleanCandidate(String value) {
-        return value == null ? "" : value.replaceAll("^[：:：\\s]+|[，,。.;；:：\\s]+$", "").trim();
+        return value == null ? "" : value.replaceAll("^[：:\\s]+|[，。;；：:\\s]+$", "").trim();
     }
 
     private String normalizeImageBase64(String imageBase64) {
@@ -140,6 +176,34 @@ public class OcrService {
         }
         int commaIndex = imageBase64.indexOf(',');
         return commaIndex >= 0 ? imageBase64.substring(commaIndex + 1).trim() : imageBase64.trim();
+    }
+
+    private void record(String imageKey, String imageUrl, String status, List<String> candidates, String fullText, String errorMessage, UserSession operator) {
+        if (!StringUtils.hasText(imageKey)) {
+            return;
+        }
+        ocrCallLogRepository.record(
+                imageKey,
+                imageUrl,
+                status,
+                candidates,
+                fullText,
+                errorMessage,
+                operator == null ? null : operator.employeeCode(),
+                operator == null ? null : operator.name()
+        );
+    }
+
+    private String hash(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return "base64:" + HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException error) {
+            return "base64:" + value.length();
+        }
     }
 
     private record OcrPayload(String image_base64) {

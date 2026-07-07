@@ -145,12 +145,40 @@ const leaderOptions = computed(() => orgUsers.value.filter((user) => {
 async function fetchUsers() {
   loading.value = true
   try {
-    const res = await listUsers()
-    users.value = res.data || []
+    users.value = await fetchAllUsers()
   } catch (error) {
+    users.value = []
     await showError(error.message || '组织架构加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchAllUsers() {
+  const pageSize = 100
+  const maxPages = 50
+  let page = 1
+  let rows = []
+  let hasMore = true
+
+  while (hasMore && page <= maxPages) {
+    const res = await listUsers({ page, pageSize })
+    const payload = normalizePage(res.data)
+    rows = rows.concat(payload.records)
+    hasMore = payload.hasMore
+    page += 1
+  }
+
+  return rows
+}
+
+function normalizePage(data) {
+  if (Array.isArray(data)) {
+    return { records: data, hasMore: false }
+  }
+  return {
+    records: Array.isArray(data?.records) ? data.records : [],
+    hasMore: Boolean(data?.hasMore)
   }
 }
 

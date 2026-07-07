@@ -132,11 +132,12 @@ test('三方下载池下载 Word 后会标记为已下载', async ({ page }) => 
 })
 
 async function loginAs(page, user) {
-  await page.addInitScript((storedUser) => {
+  await page.route('**/api/auth/me', (route) => fulfillApi(route, success(user)))
+  await page.addInitScript(() => {
     window.__CRM_DISABLE_REALTIME__ = true
-    localStorage.setItem('crm_user', JSON.stringify(storedUser))
     localStorage.setItem('crm_session_expires_at', String(Date.now() + 24 * 60 * 60 * 1000))
-  }, user)
+    localStorage.removeItem('crm_user')
+  })
 }
 
 async function mockCommonApis(page) {

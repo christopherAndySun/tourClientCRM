@@ -41,20 +41,27 @@ public class SystemSettingsService {
     public SystemSettingsRecord save(SystemSettingsRecord request, String token) {
         authService.requireAdminUser(token);
         SystemSettingsRecord old = read();
-        String nextSecret = clean(request.ocrAppSecret());
-        if (isMaskedSecret(nextSecret) || nextSecret.isEmpty()) {
-            nextSecret = old.ocrAppSecret();
-        }
+        String nextSecret = nextSensitiveValue(request.ocrAppSecret(), old.ocrAppSecret());
+        String nextDingTalkWebhook = nextSensitiveValue(request.dingtalkHqClueWebhook(), old.dingtalkHqClueWebhook());
         String updatedAt = LocalDateTime.now().format(DATE_TIME_FORMAT);
         SystemSettingsRecord stored = new SystemSettingsRecord(
                 clean(request.ocrAppCode()),
                 secretCryptoService.encrypt(nextSecret),
+                secretCryptoService.encrypt(nextDingTalkWebhook),
+                Boolean.TRUE.equals(request.dingtalkHqClueEnabled()),
                 clean(request.remark()),
                 updatedAt
         );
         write(stored);
-        systemAuditService.record(token, "SETTINGS_UPDATE", "保存系统设置", "SYSTEM_SETTINGS", "OCR", "更新 OCR 配置");
-        return maskSecret(new SystemSettingsRecord(clean(request.ocrAppCode()), nextSecret, clean(request.remark()), updatedAt));
+        systemAuditService.record(token, "SETTINGS_UPDATE", "保存系统设置", "SYSTEM_SETTINGS", "SYSTEM", "更新 OCR / 钉钉机器人配置");
+        return maskSecret(new SystemSettingsRecord(
+                clean(request.ocrAppCode()),
+                nextSecret,
+                nextDingTalkWebhook,
+                Boolean.TRUE.equals(request.dingtalkHqClueEnabled()),
+                clean(request.remark()),
+                updatedAt
+        ));
     }
 
     private SystemSettingsRecord read() {
@@ -65,10 +72,14 @@ public class SystemSettingsService {
         SystemSettingsRecord settings = databaseSettings.get();
         String rawSecret = clean(settings.ocrAppSecret());
         String decryptedSecret = secretCryptoService.decrypt(rawSecret);
-        if (!rawSecret.isEmpty() && !secretCryptoService.isEncrypted(rawSecret)) {
+        String rawDingTalkWebhook = clean(settings.dingtalkHqClueWebhook());
+        String decryptedDingTalkWebhook = secretCryptoService.decrypt(rawDingTalkWebhook);
+        if (needsEncrypt(rawSecret) || needsEncrypt(rawDingTalkWebhook)) {
             write(new SystemSettingsRecord(
                     clean(settings.ocrAppCode()),
                     secretCryptoService.encrypt(decryptedSecret),
+                    secretCryptoService.encrypt(decryptedDingTalkWebhook),
+                    Boolean.TRUE.equals(settings.dingtalkHqClueEnabled()),
                     clean(settings.remark()),
                     clean(settings.updatedAt())
             ));
@@ -76,6 +87,8 @@ public class SystemSettingsService {
         return new SystemSettingsRecord(
                 clean(settings.ocrAppCode()),
                 decryptedSecret,
+                decryptedDingTalkWebhook,
+                Boolean.TRUE.equals(settings.dingtalkHqClueEnabled()),
                 clean(settings.remark()),
                 clean(settings.updatedAt())
         );
@@ -86,16 +99,31 @@ public class SystemSettingsService {
     }
 
     private SystemSettingsRecord emptySettings() {
-        return new SystemSettingsRecord("", "", "", "");
+        return new SystemSettingsRecord("", "", "", false, "", "");
     }
 
     private SystemSettingsRecord maskSecret(SystemSettingsRecord settings) {
         return new SystemSettingsRecord(
                 settings.ocrAppCode(),
                 mask(settings.ocrAppSecret()),
+                maskUrl(settings.dingtalkHqClueWebhook()),
+                Boolean.TRUE.equals(settings.dingtalkHqClueEnabled()),
                 settings.remark(),
                 settings.updatedAt()
         );
+    }
+
+    private String nextSensitiveValue(String nextValue, String oldValue) {
+        String cleaned = clean(nextValue);
+        if (isMaskedSecret(cleaned) || cleaned.isEmpty()) {
+            return clean(oldValue);
+        }
+        return cleaned;
+    }
+
+    private boolean needsEncrypt(String value) {
+        String cleaned = clean(value);
+        return !cleaned.isEmpty() && !secretCryptoService.isEncrypted(cleaned);
     }
 
     private String mask(String value) {
@@ -107,6 +135,20 @@ public class SystemSettingsService {
             return "****";
         }
         return cleaned.substring(0, 2) + "****" + cleaned.substring(cleaned.length() - 2);
+    }
+
+    private String maskUrl(String value) {
+        String cleaned = clean(value);
+        if (cleaned.isEmpty()) {
+            return "";
+        }
+        int slashIndex = cleaned.lastIndexOf('/');
+        String prefix = slashIndex >= 0 ? cleaned.substring(0, slashIndex + 1) : "";
+        String token = slashIndex >= 0 ? cleaned.substring(slashIndex + 1) : cleaned;
+        if (token.length() <= 8) {
+            return prefix + "****";
+        }
+        return prefix + token.substring(0, 4) + "****" + token.substring(token.length() - 4);
     }
 
     private boolean isMaskedSecret(String value) {

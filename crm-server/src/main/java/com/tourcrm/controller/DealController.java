@@ -10,7 +10,6 @@ import com.tourcrm.dto.PageResponse;
 import com.tourcrm.service.DealService;
 import com.tourcrm.service.SystemAuditService;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -108,15 +107,6 @@ public class DealController {
         return dealService.update(dealCode, request, token)
                 .map(ApiResponse::ok)
                 .orElseGet(() -> ApiResponse.fail("成交记录不存在"));
-    }
-
-    @DeleteMapping("/{dealCode}")
-    public ApiResponse<Boolean> cancel(
-            @PathVariable String dealCode,
-            @RequestBody(required = false) DealCancelRequest request,
-            @RequestHeader(value = "Authorization", required = false) String token
-    ) {
-        return cancelDeal(dealCode, request, token);
     }
 
     @PostMapping("/{dealCode}/cancel")
