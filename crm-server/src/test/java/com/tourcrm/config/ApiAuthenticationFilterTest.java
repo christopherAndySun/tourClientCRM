@@ -65,6 +65,33 @@ class ApiAuthenticationFilterTest {
     }
 
     @Test
+    void rejectsUploadRequestWithoutValidToken() throws Exception {
+        when(authService.currentUser("")).thenThrow(new BusinessException("璇峰厛鐧诲綍"));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/uploads/clues/a.jpg");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(authService).currentUser("");
+    }
+
+    @Test
+    void acceptsUploadRequestWithAuthCookie() throws Exception {
+        when(authService.currentUser("cookie-token")).thenReturn(user());
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/uploads/clues/a.jpg");
+        request.setCookies(new Cookie(AuthTokenSupport.COOKIE_NAME, "cookie-token"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(authService).currentUser("cookie-token");
+    }
+
+    @Test
     void rejectsBusinessRequestWhenPasswordMustBeChanged() throws Exception {
         when(authService.currentUser("cookie-token")).thenReturn(user(true));
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/clues");

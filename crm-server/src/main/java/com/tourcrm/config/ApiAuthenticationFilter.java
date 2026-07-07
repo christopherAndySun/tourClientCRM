@@ -67,6 +67,9 @@ public class ApiAuthenticationFilter extends OncePerRequestFilter {
             return false;
         }
         String path = request.getRequestURI();
+        if (path.startsWith("/uploads/")) {
+            return true;
+        }
         if (!path.startsWith("/api/")) {
             return false;
         }
