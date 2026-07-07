@@ -181,15 +181,9 @@ public class CustomerClueService {
     }
 
     public PageResponse<PerformanceRowResponse> performancePage(String startDate, String endDate, Integer page, Integer pageSize, String token) {
-        List<UserRecord> visibleUsers = businessVisibleUsers(token).stream()
-                .sorted(Comparator.comparing(UserRecord::employeeCode))
-                .toList();
-        int safePage = page == null || page < 1 ? 1 : page;
-        int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
-        int fromIndex = Math.min((safePage - 1) * safePageSize, visibleUsers.size());
-        int toIndex = Math.min(fromIndex + safePageSize, visibleUsers.size());
-        List<PerformanceRowResponse> rows = statsQueryService.queryPerformanceRows(visibleUsers.subList(fromIndex, toIndex), startDate, endDate);
-        return new PageResponse<>(rows, visibleUsers.size(), safePage, safePageSize, (long) safePage * safePageSize < visibleUsers.size());
+        PageResponse<UserRecord> visibleUsers = authService.usersVisibleToPage(token, true, true, page, pageSize);
+        List<PerformanceRowResponse> rows = statsQueryService.queryPerformanceRows(visibleUsers.records(), startDate, endDate);
+        return new PageResponse<>(rows, visibleUsers.total(), visibleUsers.page(), visibleUsers.pageSize(), visibleUsers.hasMore());
     }
 
     public EmployeeCluesResponse employeeClues(String employeeCode, String startDate, String endDate, Integer page, Integer pageSize, String token) {

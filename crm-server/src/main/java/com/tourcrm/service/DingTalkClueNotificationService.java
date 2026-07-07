@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,59 +54,68 @@ public class DingTalkClueNotificationService {
     }
 
     public void notifyHqClueCreatedAfterCommit(ClueResponse clue, UserSession creator) {
-        if (!shouldNotify(clue, creator)) {
+        NotificationScope scope = resolveScope(clue, creator);
+        if (scope == null) {
             return;
         }
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    notifyAsync();
+                    notifyAsync(scope);
                 }
             });
             return;
         }
-        notifyAsync();
+        notifyAsync(scope);
     }
 
-    private boolean shouldNotify(ClueResponse clue, UserSession creator) {
+    private NotificationScope resolveScope(ClueResponse clue, UserSession creator) {
         if (clue == null || creator == null) {
-            return false;
+            return null;
         }
-        if ("ADMIN".equals(creator.role()) || "SALES".equals(creator.position())) {
-            return false;
+        if ("ADMIN".equalsIgnoreCase(clean(creator.role())) || "SALES".equalsIgnoreCase(clean(creator.position()))) {
+            return null;
         }
-        return !"BRANCH".equalsIgnoreCase(clean(clue.orgType()));
+        boolean branch = "BRANCH".equalsIgnoreCase(firstText(clue.orgType(), creator.orgType()));
+        return new NotificationScope(branch, clean(firstText(clue.branchId(), creator.branchId())), clean(firstText(clue.branchName(), creator.branchName())));
     }
 
-    private void notifyAsync() {
+    private void notifyAsync(NotificationScope scope) {
         CompletableFuture.runAsync(() -> {
             try {
-                sendTodaySummary();
+                sendTodaySummary(scope);
             } catch (Exception error) {
                 log.warn("DingTalk clue summary notification failed", error);
             }
         });
     }
 
-    private void sendTodaySummary() throws JsonProcessingException {
+    private void sendTodaySummary(NotificationScope scope) throws JsonProcessingException {
         SystemSettingsRecord settings = systemSettingsService.getForSystem();
-        if (!Boolean.TRUE.equals(settings.dingtalkHqClueEnabled()) || !StringUtils.hasText(settings.dingtalkHqClueWebhook())) {
+        String webhook = scope.branch() ? settings.dingtalkBranchClueWebhook() : settings.dingtalkHqClueWebhook();
+        boolean enabled = scope.branch()
+                ? Boolean.TRUE.equals(settings.dingtalkBranchClueEnabled())
+                : Boolean.TRUE.equals(settings.dingtalkHqClueEnabled());
+        if (!enabled || !StringUtils.hasText(webhook)) {
             return;
         }
         LocalDate today = LocalDate.now(SHANGHAI_ZONE);
-        List<EmployeeClueCount> counts = queryHqTodayCounts(today);
+        List<EmployeeClueCount> counts = queryTodayCounts(today, scope);
         if (counts.isEmpty()) {
             return;
         }
-        String content = buildContent(today, counts);
+        String content = buildContent(today, counts, scope);
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("keyword", "客资数据");
-        payload.put("title", today.format(TITLE_DATE_FORMAT) + " 客资数据");
+        payload.put("keyword", "客资");
+        payload.put("title", buildTitle(today, scope));
         payload.put("content", content);
         payload.put("message", content);
         payload.put("text", content);
         payload.put("total", counts.stream().mapToLong(EmployeeClueCount::count).sum());
+        payload.put("scope", scope.branch() ? "BRANCH" : "HEADQUARTERS");
+        payload.put("branchId", scope.branchId());
+        payload.put("branchName", scope.branchName());
         payload.put("items", counts.stream()
                 .map(item -> Map.of(
                         "employeeCode", item.employeeCode(),
@@ -113,39 +123,57 @@ public class DingTalkClueNotificationService {
                         "count", item.count()
                 ))
                 .toList());
-        postWebhook(settings.dingtalkHqClueWebhook(), objectMapper.writeValueAsString(payload));
+        postWebhook(webhook, objectMapper.writeValueAsString(payload));
     }
 
-    private List<EmployeeClueCount> queryHqTodayCounts(LocalDate date) {
-        return jdbcTemplate.query("""
-                        SELECT clue.uploader_employee_code,
-                               COALESCE(NULLIF(clue.uploader, ''), clue.uploader_employee_code) AS uploader_name,
-                               COUNT(*) AS total_count
-                        FROM crm_clues clue
-                        LEFT JOIN crm_users user ON user.employee_code = clue.uploader_employee_code
-                        WHERE clue.status <> 'DELETED'
-                          AND clue.created_at_value >= ?
-                          AND clue.created_at_value < ?
-                          AND COALESCE(NULLIF(clue.org_type, ''), 'HEADQUARTERS') <> 'BRANCH'
-                          AND COALESCE(clue.uploader_employee_code, '') <> ''
-                          AND clue.uploader_employee_code <> 'ADMIN'
-                          AND COALESCE(user.position, 'OPERATION') <> 'SALES'
-                        GROUP BY clue.uploader_employee_code, uploader_name
-                        ORDER BY clue.uploader_employee_code
-                        """,
+    private List<EmployeeClueCount> queryTodayCounts(LocalDate date, NotificationScope scope) {
+        List<Object> params = new ArrayList<>();
+        StringBuilder sql = new StringBuilder("""
+                SELECT clue.uploader_employee_code,
+                       COALESCE(NULLIF(clue.uploader, ''), clue.uploader_employee_code) AS uploader_name,
+                       COUNT(*) AS total_count
+                FROM crm_clues clue
+                LEFT JOIN crm_users user ON user.employee_code = clue.uploader_employee_code
+                WHERE clue.status <> 'DELETED'
+                  AND clue.created_at_value >= ?
+                  AND clue.created_at_value < ?
+                  AND COALESCE(clue.uploader_employee_code, '') <> ''
+                  AND clue.uploader_employee_code <> 'ADMIN'
+                  AND COALESCE(user.position, 'OPERATION') <> 'SALES'
+                """);
+        params.add(java.sql.Timestamp.valueOf(date.atStartOfDay()));
+        params.add(java.sql.Timestamp.valueOf(date.plusDays(1).atStartOfDay()));
+        if (scope.branch()) {
+            sql.append(" AND COALESCE(NULLIF(clue.org_type, ''), 'HEADQUARTERS') = 'BRANCH'");
+            if (StringUtils.hasText(scope.branchId())) {
+                sql.append(" AND clue.branch_id = ?");
+                params.add(scope.branchId());
+            }
+        } else {
+            sql.append(" AND COALESCE(NULLIF(clue.org_type, ''), 'HEADQUARTERS') <> 'BRANCH'");
+        }
+        sql.append("""
+                GROUP BY clue.uploader_employee_code, uploader_name
+                ORDER BY clue.uploader_employee_code
+                """);
+        return jdbcTemplate.query(sql.toString(),
                 (rs, rowNum) -> new EmployeeClueCount(
                         rs.getString("uploader_employee_code"),
                         rs.getString("uploader_name"),
                         rs.getLong("total_count")
                 ),
-                java.sql.Timestamp.valueOf(date.atStartOfDay()),
-                java.sql.Timestamp.valueOf(date.plusDays(1).atStartOfDay()));
+                params.toArray());
     }
 
-    private String buildContent(LocalDate date, List<EmployeeClueCount> counts) {
+    private String buildTitle(LocalDate date, NotificationScope scope) {
+        String scopeText = scope.branch() ? firstText(scope.branchName(), "分公司") : "";
+        return date.format(TITLE_DATE_FORMAT) + " " + scopeText + "客资数据";
+    }
+
+    private String buildContent(LocalDate date, List<EmployeeClueCount> counts, NotificationScope scope) {
         long total = counts.stream().mapToLong(EmployeeClueCount::count).sum();
         StringBuilder content = new StringBuilder();
-        content.append(date.format(TITLE_DATE_FORMAT)).append(" 客资数据\n");
+        content.append(buildTitle(date, scope)).append("\n");
         content.append("总客资 ").append(total).append(" 人\n\n");
         for (EmployeeClueCount item : counts) {
             content.append(item.employeeCode())
@@ -176,8 +204,16 @@ public class DingTalkClueNotificationService {
                 });
     }
 
+    private String firstText(String first, String second) {
+        String cleanedFirst = clean(first);
+        return cleanedFirst.isEmpty() ? clean(second) : cleanedFirst;
+    }
+
     private String clean(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private record NotificationScope(boolean branch, String branchId, String branchName) {
     }
 
     private record EmployeeClueCount(String employeeCode, String employeeName, long count) {

@@ -2,6 +2,7 @@ package com.tourcrm.service;
 
 import com.tourcrm.dto.PageResponse;
 import com.tourcrm.dto.UserRecord;
+import com.tourcrm.dto.UserSession;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -10,6 +11,7 @@ import org.springframework.util.StringUtils;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,6 +48,30 @@ public class UserRepository {
         return new PageResponse<>(rows, total, safePage, safePageSize, (long) safePage * safePageSize < total);
     }
 
+    public PageResponse<UserRecord> queryVisibleUsersPage(UserSession currentUser, boolean samePositionOnly, boolean excludeAdmin, Integer page, Integer pageSize) {
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safePageSize = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 100);
+        List<Object> params = new ArrayList<>();
+        String where = buildVisibleUsersWhere(currentUser, samePositionOnly, excludeAdmin, params);
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM crm_users WHERE " + where, Long.class, params.toArray());
+        if (total == null) {
+            total = 0L;
+        }
+        List<Object> pageParams = new ArrayList<>(params);
+        pageParams.add((safePage - 1) * safePageSize);
+        pageParams.add(safePageSize);
+        List<UserRecord> rows = jdbcTemplate.query("""
+                        SELECT employee_code, name, password, must_change_password, role, position, leader_employee_code, org_type, branch_id, branch_name, created_at_text
+                        FROM crm_users
+                        WHERE %s
+                        ORDER BY employee_code ASC
+                        LIMIT ?, ?
+                        """.formatted(where),
+                (rs, rowNum) -> readUserRow(rs),
+                pageParams.toArray());
+        return new PageResponse<>(rows, total, safePage, safePageSize, (long) safePage * safePageSize < total);
+    }
+
     public Optional<UserRecord> findUserByEmployeeCode(String employeeCode) {
         if (!StringUtils.hasText(employeeCode)) {
             return Optional.empty();
@@ -61,6 +87,28 @@ public class UserRepository {
         } catch (EmptyResultDataAccessException error) {
             return Optional.empty();
         }
+    }
+
+    private String buildVisibleUsersWhere(UserSession currentUser, boolean samePositionOnly, boolean excludeAdmin, List<Object> params) {
+        StringBuilder where = new StringBuilder("1 = 1");
+        if (excludeAdmin) {
+            where.append(" AND employee_code <> 'ADMIN'");
+        }
+        if (!"ADMIN".equalsIgnoreCase(currentUser.role())) {
+            if ("LEADER".equalsIgnoreCase(currentUser.role())) {
+                where.append(" AND (employee_code = ? OR leader_employee_code = ?)");
+                params.add(currentUser.employeeCode());
+                params.add(currentUser.employeeCode());
+            } else {
+                where.append(" AND employee_code = ?");
+                params.add(currentUser.employeeCode());
+            }
+            if (samePositionOnly) {
+                where.append(" AND position = ?");
+                params.add(currentUser.position());
+            }
+        }
+        return where.toString();
     }
 
     public boolean userExists(String employeeCode) {

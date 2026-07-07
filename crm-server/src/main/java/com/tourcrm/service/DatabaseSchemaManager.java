@@ -23,6 +23,8 @@ public class DatabaseSchemaManager {
         backfillTypedColumnsSafely();
         addMissingIndexes();
         backfillCustomerProfiles();
+        cleanupOrphanChildRows();
+        addMissingForeignKeys();
         databaseMigrationService.runMaintenanceMigrations();
     }
 
@@ -301,6 +303,8 @@ public class DatabaseSchemaManager {
                   ocr_app_secret VARCHAR(1024) NULL,
                   dingtalk_hq_clue_webhook VARCHAR(2048) NULL,
                   dingtalk_hq_clue_enabled TINYINT NOT NULL DEFAULT 0,
+                  dingtalk_branch_clue_webhook VARCHAR(2048) NULL,
+                  dingtalk_branch_clue_enabled TINYINT NOT NULL DEFAULT 0,
                   remark TEXT NULL,
                   updated_at_text VARCHAR(32) NULL,
                   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -432,6 +436,8 @@ public class DatabaseSchemaManager {
         addColumnIfMissing("crm_system_settings", "ocr_app_secret", "ocr_app_secret VARCHAR(1024) NULL");
         addColumnIfMissing("crm_system_settings", "dingtalk_hq_clue_webhook", "dingtalk_hq_clue_webhook VARCHAR(2048) NULL");
         addColumnIfMissing("crm_system_settings", "dingtalk_hq_clue_enabled", "dingtalk_hq_clue_enabled TINYINT NOT NULL DEFAULT 0");
+        addColumnIfMissing("crm_system_settings", "dingtalk_branch_clue_webhook", "dingtalk_branch_clue_webhook VARCHAR(2048) NULL");
+        addColumnIfMissing("crm_system_settings", "dingtalk_branch_clue_enabled", "dingtalk_branch_clue_enabled TINYINT NOT NULL DEFAULT 0");
         addColumnIfMissing("crm_system_settings", "remark", "remark TEXT NULL");
         addColumnIfMissing("crm_system_settings", "updated_at_text", "updated_at_text VARCHAR(32) NULL");
     }
@@ -529,6 +535,7 @@ public class DatabaseSchemaManager {
         }
         jdbcTemplate.execute("ALTER TABLE crm_system_settings MODIFY ocr_app_secret VARCHAR(1024) NULL");
         jdbcTemplate.execute("ALTER TABLE crm_system_settings MODIFY dingtalk_hq_clue_webhook VARCHAR(2048) NULL");
+        jdbcTemplate.execute("ALTER TABLE crm_system_settings MODIFY dingtalk_branch_clue_webhook VARCHAR(2048) NULL");
     }
 
     private void backfillTypedColumnsSafely() {

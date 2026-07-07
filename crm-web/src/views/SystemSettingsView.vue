@@ -27,7 +27,7 @@
         <div class="section-head">
           <div>
             <h2>OCR 图片识别配置</h2>
-            <p>用于识别截图中的微信号、手机号、抖音号等信息。OCR 只识别第一张抖音截图一次。</p>
+            <p>用于识别截图中的微信号、手机号、抖音号等信息。当前业务只识别第一张抖音截图一次。</p>
           </div>
           <el-tag type="warning">第三方服务</el-tag>
         </div>
@@ -45,8 +45,8 @@
       <article class="settings-section">
         <div class="section-head">
           <div>
-            <h2>钉钉客资播报</h2>
-            <p>本部运营每新增一条客资后，自动向本部钉钉群播报当天客资汇总；分公司数据不会发送到这里。</p>
+            <h2>本部钉钉客资播报</h2>
+            <p>本部运营每新增一条客资后，自动向本部钉钉群播报当天客资汇总。分公司数据不会发送到这里。</p>
           </div>
           <el-switch
             v-model="form.dingtalkHqClueEnabled"
@@ -63,11 +63,38 @@
               type="password"
               show-password
               clearable
-              placeholder="请输入钉钉机器人 webhook"
+              placeholder="请输入本部钉钉机器人 webhook"
+            />
+          </el-form-item>
+        </el-form>
+      </article>
+
+      <article class="settings-section">
+        <div class="section-head">
+          <div>
+            <h2>分公司钉钉客资播报</h2>
+            <p>分公司运营新增客资后，只向分公司钉钉群播报。系统会按当前分公司 ID 统计当天累计，避免和本部混用。</p>
+          </div>
+          <el-switch
+            v-model="form.dingtalkBranchClueEnabled"
+            active-text="启用"
+            inactive-text="停用"
+            inline-prompt
+          />
+        </div>
+
+        <el-form label-position="top">
+          <el-form-item label="分公司客资播报 Webhook">
+            <el-input
+              v-model="form.dingtalkBranchClueWebhook"
+              type="password"
+              show-password
+              clearable
+              placeholder="请输入分公司钉钉机器人 webhook"
             />
           </el-form-item>
           <el-alert
-            title="钉钉流程的关键词建议配置为“客资数据”，输出内容使用 webhook 入参里的 content/message/text 字段均可。"
+            title="钉钉流程关键词建议配置为“客资”。系统会同时传 content、message、text 字段，流程里任选一个字段展示即可。"
             type="success"
             :closable="false"
             show-icon
@@ -92,9 +119,8 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { getSystemSettings, saveSystemSettings } from '../api/settings'
-import { showError } from '../utils/feedback'
+import { confirmAction, showError, showSuccess } from '../utils/feedback'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -104,6 +130,8 @@ const form = reactive({
   ocrAppSecret: '',
   dingtalkHqClueWebhook: '',
   dingtalkHqClueEnabled: false,
+  dingtalkBranchClueWebhook: '',
+  dingtalkBranchClueEnabled: false,
   remark: '',
   updatedAt: ''
 })
@@ -118,6 +146,8 @@ async function fetchSettings() {
       ocrAppSecret: res.data?.ocrAppSecret || '',
       dingtalkHqClueWebhook: res.data?.dingtalkHqClueWebhook || '',
       dingtalkHqClueEnabled: Boolean(res.data?.dingtalkHqClueEnabled),
+      dingtalkBranchClueWebhook: res.data?.dingtalkBranchClueWebhook || '',
+      dingtalkBranchClueEnabled: Boolean(res.data?.dingtalkBranchClueEnabled),
       remark: res.data?.remark || '',
       updatedAt: res.data?.updatedAt || ''
     })
@@ -130,14 +160,16 @@ async function fetchSettings() {
 
 async function submit() {
   if (form.dingtalkHqClueEnabled && !form.dingtalkHqClueWebhook) {
-    await showError('启用钉钉客资播报前，请先填写本部客资播报 Webhook')
+    await showError('启用本部钉钉客资播报前，请先填写本部 Webhook')
+    return
+  }
+  if (form.dingtalkBranchClueEnabled && !form.dingtalkBranchClueWebhook) {
+    await showError('启用分公司钉钉客资播报前，请先填写分公司 Webhook')
     return
   }
   try {
-    await ElMessageBox.confirm('确认保存系统设置吗？保存后后续 OCR 和钉钉播报会使用这组配置。', '保存确认', {
-      confirmButtonText: '确认保存',
-      cancelButtonText: '取消',
-      type: 'warning'
+    await confirmAction('确认保存系统设置吗？保存后后续 OCR 和钉钉播报会使用这组配置。', '保存确认', {
+      confirmButtonText: '确认保存'
     })
   } catch {
     return
@@ -149,11 +181,14 @@ async function submit() {
       ocrAppSecret: form.ocrAppSecret,
       dingtalkHqClueWebhook: form.dingtalkHqClueWebhook,
       dingtalkHqClueEnabled: form.dingtalkHqClueEnabled,
+      dingtalkBranchClueWebhook: form.dingtalkBranchClueWebhook,
+      dingtalkBranchClueEnabled: form.dingtalkBranchClueEnabled,
       remark: form.remark
     })
     Object.assign(form, res.data || {})
     form.dingtalkHqClueEnabled = Boolean(res.data?.dingtalkHqClueEnabled)
-    ElMessage.success('系统设置已保存')
+    form.dingtalkBranchClueEnabled = Boolean(res.data?.dingtalkBranchClueEnabled)
+    await showSuccess('系统设置已保存')
   } catch (error) {
     await showError(error.message || '系统设置保存失败')
   } finally {

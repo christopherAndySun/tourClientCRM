@@ -31,6 +31,8 @@ class SystemSettingsServiceTest {
                 "app-secret-123",
                 "https://connector.dingtalk.com/webhook/flow/test-webhook-token",
                 true,
+                "https://connector.dingtalk.com/webhook/flow/branch-webhook-token",
+                true,
                 "remark",
                 ""
         ), TOKEN);
@@ -40,11 +42,15 @@ class SystemSettingsServiceTest {
         SystemSettingsRecord stored = captor.getValue();
         assertThat(stored.ocrAppSecret()).startsWith("enc:v1:");
         assertThat(stored.dingtalkHqClueWebhook()).startsWith("enc:v1:");
+        assertThat(stored.dingtalkBranchClueWebhook()).startsWith("enc:v1:");
         assertThat(secretCryptoService.decrypt(stored.ocrAppSecret())).isEqualTo("app-secret-123");
         assertThat(secretCryptoService.decrypt(stored.dingtalkHqClueWebhook())).contains("test-webhook-token");
+        assertThat(secretCryptoService.decrypt(stored.dingtalkBranchClueWebhook())).contains("branch-webhook-token");
         assertThat(stored.dingtalkHqClueEnabled()).isTrue();
+        assertThat(stored.dingtalkBranchClueEnabled()).isTrue();
         assertThat(result.ocrAppSecret()).isEqualTo("ap****23");
         assertThat(result.dingtalkHqClueWebhook()).contains("test****oken");
+        assertThat(result.dingtalkBranchClueWebhook()).contains("bran****oken");
         verify(systemAuditService).record(anyString(), anyString(), anyString(), anyString(), anyString(), anyString());
     }
 
@@ -57,6 +63,8 @@ class SystemSettingsServiceTest {
                 encryptedSecret,
                 encryptedWebhook,
                 true,
+                secretCryptoService.encrypt("https://connector.dingtalk.com/webhook/flow/branch-webhook-token"),
+                true,
                 "remark",
                 "2026-07-05 10:00"
         )));
@@ -66,6 +74,8 @@ class SystemSettingsServiceTest {
         assertThat(result.ocrAppSecret()).isEqualTo("app-secret-123");
         assertThat(result.dingtalkHqClueWebhook()).contains("test-webhook-token");
         assertThat(result.dingtalkHqClueEnabled()).isTrue();
+        assertThat(result.dingtalkBranchClueWebhook()).contains("branch-webhook-token");
+        assertThat(result.dingtalkBranchClueEnabled()).isTrue();
     }
 
     @Test
@@ -74,6 +84,8 @@ class SystemSettingsServiceTest {
                 "app-code",
                 "plain-secret",
                 "https://connector.dingtalk.com/webhook/flow/plain-webhook-token",
+                true,
+                "https://connector.dingtalk.com/webhook/flow/plain-branch-token",
                 true,
                 "remark",
                 "2026-07-05 10:00"
@@ -85,9 +97,12 @@ class SystemSettingsServiceTest {
         verify(repository).writeSystemSettings(captor.capture());
         assertThat(result.ocrAppSecret()).isEqualTo("plain-secret");
         assertThat(result.dingtalkHqClueWebhook()).contains("plain-webhook-token");
+        assertThat(result.dingtalkBranchClueWebhook()).contains("plain-branch-token");
         assertThat(captor.getValue().ocrAppSecret()).startsWith("enc:v1:");
         assertThat(captor.getValue().dingtalkHqClueWebhook()).startsWith("enc:v1:");
+        assertThat(captor.getValue().dingtalkBranchClueWebhook()).startsWith("enc:v1:");
         assertThat(secretCryptoService.decrypt(captor.getValue().ocrAppSecret())).isEqualTo("plain-secret");
         assertThat(secretCryptoService.decrypt(captor.getValue().dingtalkHqClueWebhook())).contains("plain-webhook-token");
+        assertThat(secretCryptoService.decrypt(captor.getValue().dingtalkBranchClueWebhook())).contains("plain-branch-token");
     }
 }

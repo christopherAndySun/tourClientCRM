@@ -153,6 +153,18 @@ public class AuthService {
                 .toList();
     }
 
+    public PageResponse<UserRecord> usersVisibleToPage(String token, boolean samePositionOnly, boolean excludeAdmin, Integer page, Integer pageSize) {
+        UserSession currentUser = currentUser(token);
+        PageResponse<UserRecord> pageResponse = userRepository.queryVisibleUsersPage(currentUser, samePositionOnly, excludeAdmin, page, pageSize);
+        return new PageResponse<>(
+                normalizeUsers(pageResponse.records()),
+                pageResponse.total(),
+                pageResponse.page(),
+                pageResponse.pageSize(),
+                pageResponse.hasMore()
+        );
+    }
+
     @Transactional
     public UserRecord createUser(AuthRegisterRequest request, String token) {
         requireAdmin(token);
