@@ -84,8 +84,10 @@ public class AuthService {
         this.singleLogin = singleLogin;
     }
 
+    @Transactional
     public AuthUserResponse login(AuthLoginRequest request) {
         String employeeCode = normalizeEmployeeCode(request.employeeCode());
+        ensureInitialAdminForLogin(employeeCode);
         Optional<UserRecord> matched = userRepository.findUserByEmployeeCode(employeeCode).map(this::normalizeUser);
         if (matched.isEmpty() || !matchesPassword(request.password(), matched.get().password())) {
             throw new BusinessException("员工编号或密码错误");
@@ -595,7 +597,23 @@ public class AuthService {
         if (exists) {
             return users;
         }
-        UserRecord admin = new UserRecord(
+        UserRecord admin = buildDefaultAdminUser();
+        users.add(admin);
+        userRepository.writeUser(admin);
+        return users;
+    }
+
+    private void ensureInitialAdminForLogin(String employeeCode) {
+        if (!ADMIN_EMPLOYEE_CODE.equals(employeeCode)) {
+            return;
+        }
+        if (userRepository.findUserByEmployeeCode(ADMIN_EMPLOYEE_CODE).isEmpty()) {
+            userRepository.writeUser(buildDefaultAdminUser());
+        }
+    }
+
+    private UserRecord buildDefaultAdminUser() {
+        return new UserRecord(
                 "admin",
                 ADMIN_EMPLOYEE_CODE,
                 encodePassword(ADMIN_PASSWORD),
@@ -609,8 +627,5 @@ public class AuthService {
                 List.copyOf(MENUS),
                 LocalDateTime.now().format(DATE_TIME_FORMAT)
         );
-        users.add(admin);
-        userRepository.writeUser(admin);
-        return users;
     }
 }

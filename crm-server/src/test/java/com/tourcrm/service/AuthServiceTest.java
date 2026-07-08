@@ -39,6 +39,34 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginBootstrapsAdminWhenDatabaseIsEmpty() {
+        UserRecord admin = new UserRecord(
+                "admin",
+                "ADMIN",
+                new BCryptPasswordEncoder().encode("admin123"),
+                "ADMIN",
+                "OPERATION",
+                null,
+                "HEADQUARTERS",
+                null,
+                null,
+                true,
+                List.of(AuthService.MENU_USERS, AuthService.MENU_SETTINGS),
+                "2026-07-05 10:00"
+        );
+        when(userRepository.findUserByEmployeeCode("ADMIN"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(admin));
+
+        AuthUserResponse response = authService.login(new AuthLoginRequest("admin", "admin123"));
+
+        assertThat(response.employeeCode()).isEqualTo("ADMIN");
+        assertThat(response.mustChangePassword()).isTrue();
+        verify(userRepository).writeUser(any(UserRecord.class));
+        verify(loginSessionRepository).createSession(eq(response.token()), eq("ADMIN"), any(), eq(false));
+    }
+
+    @Test
     void loginReturnsMustChangePasswordFlag() {
         UserRecord user = user("XA", new BCryptPasswordEncoder().encode("xa123456"), true);
         when(userRepository.findUserByEmployeeCode("XA")).thenReturn(Optional.of(user));

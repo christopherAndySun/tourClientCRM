@@ -61,3 +61,16 @@ powershell -ExecutionPolicy Bypass -File scripts\start-production.ps1 -AllowDevD
 ```
 
 正式上线不要加 `-AllowDevDefaults`。
+
+## 4. 首次登录和管理员初始化
+
+空数据库首次部署时，直接使用初始化管理员登录：
+
+```text
+员工编号：ADMIN
+初始密码：admin123
+```
+
+登录接口会自动创建 `ADMIN` 管理员账号。首次登录后系统会要求修改密码；正式上线后不要继续使用 `admin123`。
+
+如果生产库已经存在 `ADMIN` 账号，系统不会覆盖已有账号。

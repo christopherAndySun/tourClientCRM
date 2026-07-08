@@ -23,6 +23,19 @@ function Use-LocalJavaIfAvailable {
     }
 }
 
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Arguments
+    )
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
+    }
+}
+
 Use-LocalJavaIfAvailable
 
 $mvn = if (Test-Path (Join-Path $mavenHome "bin\mvn.cmd")) {
@@ -39,10 +52,10 @@ $jarTool = if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\jar
 
 Write-Host "Installing frontend dependencies..."
 Set-Location $webDir
-npm ci
+Invoke-Native "npm.cmd" "ci"
 
 Write-Host "Building frontend static files..."
-npm run build
+Invoke-Native "npm.cmd" "run" "build"
 
 Write-Host "Packaging backend jar..."
 Set-Location $serverDir
@@ -50,7 +63,7 @@ $mavenArgs = @("clean", "package")
 if ($SkipTests) {
     $mavenArgs += "-DskipTests"
 }
-& $mvn @mavenArgs
+Invoke-Native $mvn @mavenArgs
 
 $jar = Get-ChildItem -Path (Join-Path $serverDir "target") -Filter "*.jar" |
     Where-Object { $_.Name -notlike "*.original" } |
@@ -69,7 +82,7 @@ New-Item -ItemType Directory -Path $staticDir | Out-Null
 Copy-Item -Path (Join-Path $webDir "dist\*") -Destination $staticDir -Recurse -Force
 
 Write-Host "Embedding frontend dist into jar..."
-& $jarTool "uf" $jar.FullName "-C" $frontendStatic "BOOT-INF/classes/static"
+Invoke-Native $jarTool "uf" $jar.FullName "-C" $frontendStatic "BOOT-INF/classes/static"
 
 Write-Host ""
 Write-Host "Production jar ready:"
